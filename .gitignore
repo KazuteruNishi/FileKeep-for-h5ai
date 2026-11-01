@@ -1,0 +1,16 @@
+/private/conf/users.htpasswd
+/private/cache/auth/
+/private/conf/accounts/
+
+# Local secrets and credential backups
+.env
+.env.*
+!.env.example
+*.htpasswd
+*.htpasswd.*
+
+# Runtime caches may contain previews of private documents
+/private/cache/*
+!/private/cache/README.md
+/public/cache/*
+!/public/cache/README.md

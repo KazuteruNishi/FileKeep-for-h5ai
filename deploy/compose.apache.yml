@@ -1,0 +1,31 @@
+# Merge these settings into the existing apache service, preserving data volumes
+# and its frontend network. Paths refer to the Docker host, not this workstation.
+services:
+  apache:
+    # Keep the image already used by the existing service. No build required.
+    image: php:8.5.1RC2-apache
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        a2enmod rewrite
+        apache2ctl -t
+        exec apache2-foreground
+    environment:
+      H5AI_AUTH_FILE: /run/secrets/h5ai.htpasswd
+      H5AI_HTTPS: "1"
+      H5AI_USERS_DIR: /var/lib/h5ai/users
+      H5AI_AUTH_STATE: /var/lib/h5ai/users/login-attempts
+      # Optional: set the actual Traefik IP to trust its X-Forwarded-For header.
+      # H5AI_TRUSTED_PROXIES: "172.21.0.2"
+      # Existing bcrypt account chosen as initial administrator.
+      H5AI_ADMIN_USER: ton_identifiant
+    volumes:
+      - /docker/apache2/auth/users.htpasswd:/run/secrets/h5ai.htpasswd:ro
+      - /docker/apache2/auth/managed:/var/lib/h5ai/users:rw
+      - /docker/apache2/website/_h5ai/deploy/apache-h5ai.conf:/etc/apache2/sites-available/000-default.conf:ro
+      - /docker/apache2/website/_h5ai/deploy/auth.ini:/usr/local/etc/php/conf.d/h5ai-auth.ini:ro
+    labels:
+      - traefik.http.routers.apache.middlewares=apache-force-https
+      - traefik.http.middlewares.apache-force-https.redirectscheme.scheme=https
+      - traefik.http.middlewares.apache-force-https.redirectscheme.permanent=true
