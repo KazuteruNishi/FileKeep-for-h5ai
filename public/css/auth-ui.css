@@ -1,0 +1,37 @@
+/* Native details keeps the account menu usable without JavaScript. */
+#h5ai-auth-actions{position:fixed;top:6px;right:12px;z-index:100;margin:0;padding:0;color-scheme:dark;color:#ededed;font:14px/1.4 system-ui,sans-serif}
+#h5ai-auth-actions summary{box-sizing:border-box;display:flex;align-items:center;gap:9px;height:36px;max-width:220px;padding:3px 9px 3px 4px;border:1px solid #363636;border-radius:20px;background:#181818;cursor:pointer;list-style:none;user-select:none}
+#h5ai-auth-actions summary::-webkit-details-marker{display:none}
+#h5ai-auth-actions summary:hover,#h5ai-auth-actions[open] summary{background:#252525;border-color:#666}
+#h5ai-auth-actions .h5ai-profile-thumb,#h5ai-auth-actions .h5ai-profile-initial{box-sizing:border-box;display:grid;place-items:center;flex:0 0 28px;width:28px;height:28px;margin:0;padding:0;object-fit:cover;border-radius:50%;background:#333;color:#eee;font-size:13px;font-weight:600}
+#h5ai-auth-actions .h5ai-account-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+#h5ai-auth-actions .h5ai-chevron{flex-shrink:0;transition:transform .15s ease}
+#h5ai-auth-actions[open] .h5ai-chevron{transform:rotate(180deg)}
+#h5ai-auth-actions .h5ai-account-panel{box-sizing:border-box;position:fixed;right:12px;top:56px;z-index:101;width:224px;max-width:calc(100vw - 24px);max-height:calc(100vh - 72px);max-height:calc(100dvh - 72px);overflow:auto;border:1px solid #333;border-radius:10px;background:#181818;box-shadow:0 12px 32px #0006}
+#h5ai-auth-actions:not([open]) .h5ai-account-panel{display:none}
+#h5ai-auth-actions .h5ai-account-identity{padding:12px;border-bottom:1px solid #333;overflow-wrap:anywhere}
+#h5ai-auth-actions .h5ai-account-identity strong{display:block;color:#f5f5f5;font-size:14px;font-weight:600}
+#h5ai-auth-actions .h5ai-account-role{display:block;margin-top:3px;color:#aaa;font-size:12px;font-weight:400}
+
+#h5ai-auth-actions nav{display:block;padding:5px}
+#h5ai-auth-actions nav a,#h5ai-auth-actions button{box-sizing:border-box;display:flex;align-items:center;gap:10px;width:100%;min-height:36px;margin:0;padding:9px;border:0;border-radius:5px;background:transparent;color:#ededed;text-decoration:none;text-align:left;font:500 14px/18px system-ui,sans-serif;cursor:pointer}
+#h5ai-auth-actions nav a:hover{background:#292929;color:white}
+#h5ai-auth-actions .h5ai-account-panel svg{flex:0 0 17px;width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+#h5ai-auth-actions form{margin:0;padding:5px;border-top:1px solid #333}
+#h5ai-auth-actions button{color:#ff6969}
+#h5ai-auth-actions button:hover{background:#351c1c;color:#ff9797}
+#h5ai-auth-actions summary:focus-visible,#h5ai-auth-actions a:focus-visible,#h5ai-auth-actions button:focus-visible{outline:2px solid #ccc;outline-offset:2px}
+#topbar #h5ai-auth-actions{position:static;flex:0 0 auto;order:98;align-self:center;margin-left:auto;padding:6px 12px 6px 8px}
+#topbar #flowbar{min-width:0}
+.h5ai-header-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;margin-left:auto}
+.h5ai-header-leading{display:flex;align-items:center;gap:16px;min-width:0}
+header .h5ai-back-link{display:inline-flex;align-items:center;justify-content:center;flex:0 0 48px;width:48px;height:48px;margin:-6px 0;color:#aaa;text-decoration:none}
+header .h5ai-back-link:hover{color:#fff}
+header .h5ai-back-link:focus-visible{outline:2px solid #ccc;outline-offset:-4px}
+header .h5ai-back-link svg{display:block;width:24px;height:24px}
+#h5ai-account-slot{flex:0 0 auto}
+#h5ai-account-slot #h5ai-auth-actions{position:relative;top:auto;right:auto}
+#h5ai-account-slot .h5ai-account-panel{position:absolute;top:calc(100% + 8px);right:0;max-height:calc(100dvh - 120px)}
+@media(max-width:420px){#h5ai-auth-actions summary{max-width:150px}}
+@media(prefers-reduced-motion:reduce){#h5ai-auth-actions .h5ai-chevron{transition:none}}
+@media print{#h5ai-auth-actions{display:none}}
