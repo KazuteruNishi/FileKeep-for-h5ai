@@ -135,9 +135,7 @@ class Auth {
             Audit::record('auth.failed', 'failure', is_string($user) ? $user : null, ['reason' => 'invalid_format']);
             self::page('Identifiant ou mot de passe incorrect.', 401);
         }
-        // Persistent buckets, independent of the session. Do not trust forwarded
-        // headers: behind Traefik the network bucket covers the proxy as a whole.
-        self::limit('network:' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'), 100, true, $user);
+        // Persistent per-account bucket, independent of sessions and shared IPs.
         self::limit('account:' . $user, 10, true, $user);
         // bcrypt only: older Apache apr1/SHA1 hashes must be migrated.
         $hash = '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.';
