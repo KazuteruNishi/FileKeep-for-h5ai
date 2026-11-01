@@ -299,7 +299,7 @@ du compte, en haut à droite.
 | `H5AI_AUTH_FILE` | Fichier bcrypt importé à l'initialisation | `/run/secrets/h5ai.htpasswd` |
 | `H5AI_ADMIN_USER` | Compte promu administrateur lors du premier import | `admin` |
 | `H5AI_USERS_DIR` | Stockage privé persistant et accessible en écriture | `/var/lib/h5ai/users` |
-| `H5AI_AUTH_STATE` | Compteurs de limitation des tentatives | `/var/lib/h5ai/users/login-attempts` |
+| `H5AI_AUTH_STATE` | Dossier des compteurs de tentatives, séparés par compte | `/var/lib/h5ai/users/login-attempts` |
 | `H5AI_HTTPS` | `1` pour les cookies Secure derrière le proxy HTTPS | `1` |
 | `H5AI_TRUSTED_PROXIES` | Adresses ou CIDR des proxys de confiance pour les journaux | Vide par défaut |
 
@@ -394,6 +394,7 @@ de droits, refus d'accès et consultations des journaux eux-mêmes.
 - Cookies `HttpOnly`, `SameSite=Lax` et `Secure` avec HTTPS configuré.
 - Renouvellement de l'identifiant de session après authentification.
 - Jetons CSRF et limitation des tentatives de connexion.
+- Chaque compte dispose de sa propre limite de 10 tentatives de connexion par période de 15 minutes. Le dépassement bloque uniquement les nouvelles connexions à ce compte, sans bloquer les autres utilisateurs, même derrière le même proxy. Les sessions déjà ouvertes restent actives.
 - Session de 30 minutes d'inactivité, avec un maximum de 8 heures.
 - Option « Rester connecté » avec un jeton aléatoire valable 30 jours, dont seul
   le condensat du secret est conservé côté serveur.
