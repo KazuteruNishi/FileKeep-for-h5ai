@@ -219,6 +219,7 @@ class Auth {
     }
 
     private static function page($error = '', $status = 200) {
+        if ($status === 429) { self::stop($status, $error, false); }
         http_response_code($status);
         header('Content-Type: text/html; charset=utf-8');
         require __DIR__ . '/../pages/login.php';
@@ -230,8 +231,18 @@ class Auth {
             Audit::record('access.denied', 'denied', null, ['status' => $status, 'path' => parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH)]);
         }
         http_response_code($status);
+        header('Cache-Control: private, no-store, max-age=0');
+        header('X-Content-Type-Options: nosniff');
+        header_remove('Content-Disposition');
+        header_remove('Content-Length');
+        if (ErrorPage::wantsHtml()) {
+            ErrorPage::render($status, $message);
+            exit;
+        }
         header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['err' => $status, 'message' => $message]);
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'HEAD') {
+            echo json_encode(['err' => $status, 'message' => $message]);
+        }
         exit;
     }
 
