@@ -18,11 +18,30 @@ class Gateway {
         if (!Auth::allowedPath($path, true)) {
             Auth::stop(404, 'Fichier introuvable.');
         }
-        if (is_dir($path)) { return; }
+        if (is_dir($path)) {
+            if ($method === 'GET' && ErrorPage::wantsHtml()) {
+                self::rememberFolder(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH));
+            }
+            return;
+        }
         if ($method === 'POST') {
             Auth::stop(405, 'Méthode non autorisée pour un fichier.');
         }
         self::send($path);
+    }
+
+    public static function folderPath($href) {
+        if (!is_string($href) || preg_match('/[\x00-\x20\\\\?#]/', $href) || substr($href, 0, 2) === '//') { return null; }
+        $root = Routes::url('home');
+        if (strpos($href, $root) !== 0) { return null; }
+        $path = dirname(__DIR__, 4) . '/' . rawurldecode(substr($href, strlen($root)));
+        return is_dir($path) && Auth::allowedPath($path) ? $path : null;
+    }
+
+    public static function rememberFolder($href) {
+        if (!empty($_SESSION['access']) && self::folderPath($href) !== null) {
+            $_SESSION['access']['last_folder'] = $href;
+        }
     }
 
     private static function send($path) {

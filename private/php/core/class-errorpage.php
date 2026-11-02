@@ -27,6 +27,11 @@ class ErrorPage {
         $description = $messages[$status] ?? $message;
         $public = rtrim(str_replace('\\', '/', dirname(Auth::endpoint())), '/');
         $home = Routes::url('home');
+        $lastFolder = $_SESSION['access']['last_folder'] ?? null;
+        if (!in_array($status, [401, 429], true) && $lastFolder !== null
+            && Gateway::folderPath($lastFolder) !== null) {
+            $home = $lastFolder;
+        }
         $retry = $status >= 500 || in_array($status, [405, 416], true);
         $label = in_array($status, [401, 429], true) ? 'Retour à la connexion' : 'Retour aux fichiers';
         header('Content-Type: text/html; charset=utf-8');
