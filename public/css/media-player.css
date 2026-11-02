@@ -1,0 +1,9 @@
+.fk-player.shaka-video-container,.fk-player{position:absolute;box-sizing:border-box;width:min(1100px,100%);height:min(70vh,calc(100svh - 120px),619px);max-height:100%;background:#080808;color:#eee;border:1px solid #333;border-radius:8px;box-shadow:0 16px 64px #0008;overflow:hidden;font:14px/1.4 system-ui,sans-serif;color-scheme:dark;text-align:left;--shaka-font-family:system-ui,sans-serif}
+.fk-player #pv-content-vid{position:static!important;display:block;width:100%!important;height:100%!important;max-width:100%;max-height:100%;object-fit:contain;box-shadow:none}
+.fk-player .JASSUB{position:absolute!important;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:1;flex:none}
+.fk-player .shaka-controls-container{z-index:2}.fk-player [hidden]{display:none!important}
+.fk-software-audio .shaka-language-button{display:none!important}
+.fk-messages{position:absolute;z-index:3;top:10px;left:10px;right:10px;pointer-events:none}.fk-messages p{font-size:12px;line-height:1.5;margin:0 0 6px;padding:10px 14px;background:#181818dd}.fk-messages p:empty{display:none}.fk-play-status{color:#ffc5c5}.fk-sub-status{color:#ddd}
+.fk-subtitle-delay-menu .fk-delay-field{display:flex;gap:24px;justify-content:space-between;align-items:center;padding:16px 24px;font:inherit;color:inherit}.fk-delay-field input{width:80px;padding:6px;border:1px solid #666;border-radius:4px;background:#202020;color:#eee;font:inherit}
+.fk-player :focus-visible{outline:2px solid #eee;outline-offset:2px}.fk-player:fullscreen{width:100%;height:100%;max-height:none;border:0;border-radius:0;left:0!important;top:0!important}
+@media(max-width:600px){.fk-player{height:min(60vh,calc(100svh - 120px))}}

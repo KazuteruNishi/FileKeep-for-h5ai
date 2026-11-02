@@ -389,6 +389,67 @@ de droits, refus d'accès et consultations des journaux eux-mêmes.
 - Aucun mot de passe, empreinte bcrypt, cookie ou jeton n'est enregistré.
 - Aucun import automatique des anciens journaux Apache.
 
+### Lire des vidéos et leurs sous-titres ASS
+
+Le lecteur utilise **Shaka Player 5.3.3**, avec son interface et ses styles
+officiels hébergés localement. Il propose le volume, la progression, la vitesse
+et le plein écran. Sur un MKV, les pistes ASS sont recherchées automatiquement
+après le chargement de la vidéo. Choisissez la piste dans le menu natif
+**Sous-titres** de Shaka, accessible par son icône dans la barre du lecteur ou
+par les paramètres. L'option **Désactivés** utilise également ce menu natif.
+Les sous-titres restent désactivés tant qu'aucune piste n'a été sélectionnée.
+Le **Décalage des sous-titres** et la vitesse se règlent dans les paramètres
+de Shaka, avec ses sous-menus. Aucun panneau ASS séparé n'est ajouté.
+Le lecteur reçoit ses propres événements de souris et de clavier :
+l'aperçu h5ai ne doit pas annuler les actions sur ses commandes.
+
+L'extraction des pistes ASS/SSA des fichiers MKV est réalisée en PHP ; leur
+affichage utilise JASSUB/libass dans le navigateur, avec les styles et les polices
+jointes lorsqu'elles sont disponibles. Aucun FFmpeg ou FFprobe à installer sur
+le serveur, service externe ou conteneur supplémentaire n'est requis. Les fichiers JavaScript, WebAssembly
+et la police de remplacement sont livrés dans `public/js/jassub`. Shaka est livré
+dans `public/js/shaka` et `public/css/shaka`. Aucune police Google ni autre
+ressource distante n'est nécessaire à l'interface.
+
+- La première analyse parcourt les éléments MKV en sautant les données vidéo et
+  audio. Elle est limitée à 25 secondes de traitement et peut échouer sur des
+  fichiers particulièrement volumineux ou atypiques.
+- Les résultats sont conservés dans `H5AI_USERS_DIR/media`, avec contrôle des
+  droits à chaque accès, invalidation quand le fichier change et nettoyage des
+  caches de plus de 7 jours lors d'une nouvelle extraction.
+- Limites : 16 Mio de sous-titres, 32 polices, 4 Mio par police et 16 Mio de polices
+  au total. Le cache est plafonné à environ 512 Mio. Les nouvelles extractions
+  sont limitées à 10 par compte sur une période de 15 minutes.
+- Les pistes compressées, les sous-titres images PGS/VobSub et les fichiers
+  contenant des sous-titres sans durée explicite ne sont pas pris en charge.
+- Le navigateur doit toujours savoir décoder la vidéo : aucun transcodage vidéo
+  n'est effectué. L'audio AAC conserve sa lecture native. Pour la piste audio
+  principale en FLAC, AC3, E-AC3 ou DTS, un moteur logiciel utilise Mediabunny
+  pour lire le MKV par requêtes Range. Le FLAC utilise libFLAC WebAssembly ;
+  AC3/E-AC3 et DTS utilisent les extensions Mediabunny basées sur libavcodec
+  (FFmpeg), exécutées en WebAssembly dans le navigateur.
+  Les fichiers sont fournis dans `public/js/audio` et `public/js/flac-audio.js` :
+  Aucun programme FFmpeg/FFprobe n'est lancé dans Apache.
+- Pour ces formats, le menu Shaka **Paramètres → Piste audio** permet de choisir
+  entre les pistes FLAC, AC3, E-AC3 et DTS quand plusieurs sont présentes. Les
+  décodeurs nécessaires sont chargés uniquement à la demande.
+- Le son décodé suit le volume, le bouton muet, la pause, les déplacements et la
+  vitesse du lecteur. Le navigateur peut demander un clic pour activer le son.
+  Seules quelques secondes de son sont préparées à l'avance ; la vidéo complète
+  n'est pas téléchargée en mémoire. La vitesse logicielle peut modifier la
+  hauteur du son, contrairement à la correction de hauteur de certains lecteurs
+  natifs. Les pistes multicanales sont adaptées à la sortie stéréo, y compris
+  les canaux centraux pour conserver les dialogues. Le moteur est libéré à la
+  fermeture de l'aperçu. Les variantes DTS-HD/immersives ne sont pas garanties
+  au-delà des capacités du décodeur fourni.
+- Pour les fichiers dont la piste principale est lue nativement, le choix des
+  pistes audio dépend toujours des possibilités du navigateur.
+
+**Mise à jour d'une installation existante :** transférer aussi
+`deploy/apache-h5ai.conf`, qui autorise les fichiers `.wasm` du moteur de
+sous-titres et leur associe le bon type MIME, puis redémarrer Apache.
+Le plein écran du lecteur inclut les sous-titres.
+
 ## Sessions et sécurité
 
 - Cookies `HttpOnly`, `SameSite=Lax` et `Secure` avec HTTPS configuré.
@@ -459,6 +520,7 @@ sudo docker inspect apache --format '{{index .Config.Labels "com.docker.compose.
     ├── avatars/            # Photos privées
     ├── remember/           # Jetons de connexion persistante
     ├── login-attempts/     # Compteurs de tentatives
+    ├── media/              # Cache privé régénérable des sous-titres et polices
     └── audit/              # Journaux et fichiers de rotation
 ```
 
@@ -487,6 +549,10 @@ Un fichier déjà suivi par Git n'est pas retiré de l'historique par un ajout a
 - [Extrait Compose pour Apache existant](deploy/compose.apache.yml)
 - [Configuration Apache](deploy/apache-h5ai.conf)
 - [Projet h5ai d'origine — Lars Jung](https://github.com/lrsjng/h5ai)
+- [JASSUB — rendu ASS/SSA avec libass](https://github.com/ThaUnknown/jassub)
+- [Shaka Player — lecteur et interface vidéo](https://github.com/shaka-project/shaka-player)
+- [Mediabunny — lecture du conteneur MKV](https://github.com/Vanilagy/mediabunny)
+- [wasm-audio-decoders — décodeur libFLAC](https://github.com/eshaz/wasm-audio-decoders)
 - [Documentation de l'image PHP officielle](https://github.com/docker-library/docs/blob/master/php/README.md)
 - [Documentation Apache de htpasswd](https://httpd.apache.org/docs/2.4/programs/htpasswd.html)
 
@@ -494,3 +560,28 @@ Le projet h5ai d'origine est distribué sous [licence MIT](https://github.com/lr
 Certaines icônes Material Design ont leurs propres conditions de licence, indiquées
 dans le projet d'origine. Conservez les mentions de copyright et les licences des
 composants redistribués.
+
+La version autonome JASSUB **1.8.8** est fournie sans modification dans
+`public/js/jassub` pour permettre une installation sans compilation ni npm.
+Les licences de JASSUB et de ses composants sont conservées dans
+`public/js/jassub/COPYRIGHT` ; les sources correspondantes sont disponibles
+sur [le tag amont 1.8.8](https://github.com/ThaUnknown/jassub/tree/1.8.8).
+
+Shaka Player **5.3.3** est distribué sous licence Apache-2.0, conservée dans
+`public/js/shaka/LICENSE`. Le script officiel est fourni sans modification ;
+la feuille de style officielle retire uniquement le chargement distant de la
+police Roboto pour utiliser les polices système et fonctionner sans dépendance
+à un service externe.
+
+Le moteur audio inclut Mediabunny **1.65.0** (MPL-2.0, bundle ESM renommé en
+`.js`, sans modification) et **@wasm-audio-decoders/flac 0.2.11** (MIT), dont
+le décodeur repose sur libFLAC (BSD). Les licences sont conservées dans
+`public/js/audio/LICENSE-*.txt`. Les sources correspondantes sont disponibles
+dans les paquets npm de ces versions et les dépôts amont indiqués ci-dessus.
+
+Les extensions **@mediabunny/ac3** et **@mediabunny/dts 1.65.0** (MPL-2.0)
+embarquent libavcodec/FFmpeg en WebAssembly sous LGPL-2.1 ou ultérieure. Leurs
+imports sont redirigés vers le bundle Mediabunny local ; le code des codecs
+n'est pas modifié. Les licences sont dans `public/js/audio/LICENSE-*.txt` et
+les informations de compilation et de provenance dans `SOURCES-ac3.md` et
+`SOURCES-dts.md` du même dossier.

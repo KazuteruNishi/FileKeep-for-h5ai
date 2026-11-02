@@ -79,6 +79,41 @@
       }
     }
     shaka.ui.OverflowMenu.registerElement('filekeep_subtitle_delay', { create: (parent, controls) => new SubtitleDelay(parent, controls) });
+    class SoftwareAudioSelection extends shaka.ui.SettingsMenu {
+      constructor(parent, controls) {
+        super(parent, controls, shaka.ui.Enums.MaterialDesignSVGIcons.LANGUAGE);
+        const root = controls.getVideoContainer();
+        const state = instances.get(root);
+        this.button.classList.add('fk-audio-language-button');
+        this.menu.classList.add('fk-audio-languages');
+        this.button.setAttribute('aria-label', 'Piste audio');
+        this.nameSpan.textContent = 'Piste audio'; this.backSpan.textContent = 'Piste audio';
+        const update = () => {
+          const tracks = state?.audioTracks || [];
+          this.button.hidden = tracks.length < 2;
+          for (const child of Array.from(this.menu.children)) if (child !== this.backButton) child.remove();
+          for (const track of tracks) {
+            const row = document.createElement('button'); row.type = 'button';
+            row.setAttribute('role', 'menuitemradio');
+            const chosen = track.id === state.selectedAudioId;
+            row.setAttribute('aria-checked', String(chosen));
+            const label = track.label + ' · ' + track.language + ' (' + track.codec.toUpperCase() + ')';
+            const text = document.createElement('span'); text.textContent = label; row.append(text);
+            if (chosen) {
+              text.classList.add('shaka-chosen-item');
+              new shaka.ui.Icon(row, shaka.ui.Enums.MaterialDesignSVGIcons.CHECKMARK);
+              this.currentSelection.textContent = label;
+            }
+            this.menu.append(row);
+            row.addEventListener('click', () => {
+              state.audioController?.selectTrack(track.id).catch(error => state.audioStatus(error.message));
+            });
+          }
+        };
+        this.eventManager.listen(root, 'filekeep-audio-updated', update); update();
+      }
+    }
+    shaka.ui.OverflowMenu.registerElement('filekeep_audio', { create: (parent, controls) => new SoftwareAudioSelection(parent, controls) });
     registered = true;
   }
   window.FileKeepPlayer = {
@@ -98,12 +133,14 @@
       root.append(messages);
       const abort = new AbortController();
       let player = null, ui = null, renderer = null, manifest = null, selection = 0, disposed = false;
-      let cleanupPromise = null, addingTracks = false, activeAssId = null, flacAudio = null;
+      let cleanupPromise = null, addingTracks = false, activeAssId = null, softwareAudio = null;
       const assTracks = new Map(); const trackUrls = [];
       const on = (target, event, handler) => target.addEventListener(event, handler, { signal: abort.signal });
       const status = text => { subtitleStatus.textContent = text; };
       const state = {
         isMkv: /\.mkv$/i.test(new URL(href, location.href).pathname), hasAssTracks: false, delayButton: null, offset: 0,
+        audioTracks: [], selectedAudioId: null, audioController: null,
+        audioStatus: text => { if (!disposed) audioStatus.textContent = text; },
         setOffset(offset) { this.offset = offset; if (renderer) renderer.timeOffset = offset; }
       };
       instances.set(root, state);
@@ -190,7 +227,7 @@
         disposed = true; selection++; abort.abort(); destroyRenderer(); instances.delete(root);
         video.pause();
         cleanupPromise = (async () => {
-          if (flacAudio) await flacAudio.destroy();
+          if (softwareAudio) await softwareAudio.destroy();
           try { if (ui) await ui.destroy(); else if (player) await player.destroy(); }
           catch (_) {}
           for (const url of trackUrls) URL.revokeObjectURL(url);
@@ -219,7 +256,7 @@
           ui.getControls().getLocalization().changeLocale(['fr']);
           ui.configure({
             controlPanelElements: ['play_pause', 'mute', 'volume', 'time_and_duration', 'spacer', 'captions', 'overflow_menu', 'fullscreen'],
-            overflowMenuButtons: ['captions', 'filekeep_subtitle_delay', 'playback_rate', 'language', 'picture_in_picture'],
+            overflowMenuButtons: ['captions', 'filekeep_subtitle_delay', 'playback_rate', 'language', 'filekeep_audio', 'picture_in_picture'],
             textTrackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.LABEL,
             addSeekBar: true, enableTooltips: true,
             seekBarColors: { base: 'rgba(255,255,255,.25)', buffered: 'rgba(255,255,255,.5)', played: '#ededed' }
@@ -235,20 +272,30 @@
           if (!disposed) discoverSubtitles();
           if (!disposed && state.isMkv) {
             root.dataset.audioEngine = 'probing';
-            import(new URL('flac-audio.js?v=1.0.0', assetRoot).href).then(async ({ prepareFlacAudio }) => {
+            import(new URL('flac-audio.js?v=2.0.0', assetRoot).href).then(async ({ prepareAudio }) => {
               if (disposed) return;
-              const controller = await prepareFlacAudio(video, href, {
+              const controller = await prepareAudio(video, href, {
                 signal: abort.signal,
                 onStatus: text => { if (!disposed) audioStatus.textContent = text; },
-                onState: mode => { if (!disposed) root.dataset.audioEngine = mode; }
+                onState: mode => {
+                  if (disposed) return;
+                  root.dataset.audioEngine = mode;
+                  root.classList.toggle('fk-software-audio', mode !== 'error');
+                  if (mode === 'error') { state.audioTracks = []; root.dispatchEvent(new Event('filekeep-audio-updated')); }
+                },
+                onTracks: (tracks, selectedId) => {
+                  if (disposed) return;
+                  state.audioTracks = tracks; state.selectedAudioId = selectedId;
+                  root.dispatchEvent(new Event('filekeep-audio-updated'));
+                }
               });
               if (disposed) { await controller?.destroy(); return; }
-              flacAudio = controller;
+              softwareAudio = controller; state.audioController = controller;
               if (!controller) root.dataset.audioEngine = 'native';
             }).catch(error => {
               if (!disposed) {
                 root.dataset.audioEngine = 'error';
-                audioStatus.textContent = 'Son FLAC indisponible : ' + error.message;
+                audioStatus.textContent = 'Son indisponible : ' + error.message;
               }
             });
           }

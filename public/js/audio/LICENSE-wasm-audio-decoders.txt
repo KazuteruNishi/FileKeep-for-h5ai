@@ -23,4 +23,5 @@ SOFTWARE.
 Package: @wasm-audio-decoders/flac 0.2.11 (MIT, per package.json)
 Source: https://github.com/eshaz/wasm-audio-decoders/tree/main/src/flac
 The bundle retains its original copyright notice. libFLAC has its separate
-BSD license in LICENSE-libFLAC.txt. No FFmpeg code or extension is used.
+BSD license in LICENSE-libFLAC.txt. This FLAC bundle does not use FFmpeg;
+the optional AC3/E-AC3/DTS extensions have their own separate licenses.
