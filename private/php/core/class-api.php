@@ -69,8 +69,12 @@ class Api {
             $href = $this->request->query('items.href');
             $what = $this->request->query_numeric('items.what');
             $response['items'] = $this->context->get_items($href, $what);
-            // Only the main file view sets this flag, not sidebar prefetches.
-            if ($this->request->query_boolean('rememberFolder', false)) {
+            // Older cached clients have no flag. Their main view requests the
+            // folder in REQUEST_URI; sidebar prefetches request other folders.
+            $currentHref = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+            $isCurrentFolder = is_string($href) && is_string($currentHref)
+                && rtrim(rawurldecode($href), '/') === rtrim(rawurldecode($currentHref), '/');
+            if ($this->request->query_boolean('rememberFolder', false) || $isCurrentFolder) {
                 Gateway::rememberFolder($href);
             }
         }
