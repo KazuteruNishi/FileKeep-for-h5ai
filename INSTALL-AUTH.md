@@ -119,8 +119,7 @@ par défaut pour ce site ; conserver ailleurs une copie de l'ancien fichier si
 tu y avais ajouté des réglages personnels à reporter.
 
 Si tu avais déjà appliqué la précédente proposition, retirer `build` et rétablir
-ton image existante à la place de `h5ai-auth:local`. Le Dockerfile fourni ne sert
-plus qu'au test isolé décrit à la fin de ce document.
+ton image existante à la place de `h5ai-auth:local`.
 
 Les sessions PHP sont locales à cet unique conteneur. Après une recréation,
 « Rester connecté » peut recréer une session grâce au jeton conservé dans le
@@ -253,8 +252,8 @@ Sources acceptées pour le recadrage : JPEG/PNG/WebP, 10 Mo, 24 mégapixels et
 - Les vidéos acceptent les requêtes Range (206) et HEAD ne transmet pas de corps.
 - Un POST sans le jeton CSRF répond 403 ; 10 essais de connexion par compte
   en 15 minutes entraînent un refus 429, même après suppression du cookie.
-  Une limite supplémentaire de 100 essais par adresse réseau s'applique ; derrière
-  Traefik, elle couvre l'ensemble des utilisateurs passant par ce proxy.
+  Seules les nouvelles connexions à ce compte sont limitées : les autres comptes
+  et les sessions déjà ouvertes restent accessibles, même derrière le même proxy.
 - Un lien vers `_h5ai/private/conf/options.json`, un fichier caché, un lien
   symbolique ou un chemin contenant `..` ne révèle rien.
 - Une miniature dans `_h5ai/public/cache` nécessite aussi une session.
@@ -352,8 +351,8 @@ Déclarer uniquement l'adresse du proxy ; elle doit être mise à jour si Traefi
 change d'IP. Les adresses et CIDR IPv4/IPv6 sont acceptés, séparés par des virgules.
 Le parcours de `X-Forwarded-For` part du proxy vers le client et retient la première
 adresse non approuvée, afin d'ignorer les préfixes falsifiés. L'adresse réelle
-n'est utilisée ici que pour les journaux ; la limitation des connexions conserve
-sa politique existante. L'interface indique la provenance de l'adresse affichée.
+n'est utilisée ici que pour les journaux ; la limitation des connexions est
+séparée par compte. L'interface indique la provenance de l'adresse affichée.
 
 Après changement d'environnement :
 
@@ -362,16 +361,3 @@ cd /docker/docker-build
 sudo docker-compose -p docker-build up -d --no-deps --no-build apache
 ```
 
-## Vérification locale
-
-Avec PHP CLI : `php tests/auth-security.php`. Ce test utilise uniquement une
-arborescence temporaire et un serveur PHP local ; il n'installe pas Apache et ne
-remplace pas les vérifications du virtual host dans le conteneur.
-
-Sur une machine avec Docker et curl : `sh tests/docker-security.sh` construit
-l'image et vérifie le vrai routage Apache dans un conteneur temporaire isolé.
-Il teste aussi les miniatures, un lien symbolique et un fichier PHP partagé.
-
-`php tests/audit-storage.php` vérifie les proxys de confiance, les écritures
-simultanées, les filtres, la pagination stable, la rotation, la rétention, le
-plafond quotidien et le comportement en cas de stockage indisponible.

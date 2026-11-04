@@ -135,9 +135,7 @@ class Auth {
             Audit::record('auth.failed', 'failure', is_string($user) ? $user : null, ['reason' => 'invalid_format']);
             self::page('Identifiant ou mot de passe incorrect.', 401);
         }
-        // Persistent buckets, independent of the session. Do not trust forwarded
-        // headers: behind Traefik the network bucket covers the proxy as a whole.
-        self::limit('network:' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'), 100, true, $user);
+        // Persistent per-account bucket, independent of sessions and shared IPs.
         self::limit('account:' . $user, 10, true, $user);
         // bcrypt only: older Apache apr1/SHA1 hashes must be migrated.
         $hash = '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.';
@@ -187,7 +185,11 @@ class Auth {
         self::limit('account-settings:' . $_SESSION['access']['user'], 10, false, $_SESSION['access']['user']);
     }
 
-    private static function limit($key, $max, $login = true, $target = null) {
+    public static function limitMediaExtraction() {
+        self::limit('subtitle-extraction:' . $_SESSION['access']['user'], 10, false, $_SESSION['access']['user'], 'subtitles');
+    }
+
+    private static function limit($key, $max, $login = true, $target = null, $action = null) {
         $dir = getenv('H5AI_AUTH_STATE') ?: __DIR__ . '/../../cache/auth';
         if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
             self::stop(503, 'Stockage de sécurité indisponible.');
@@ -203,7 +205,7 @@ class Auth {
         }
         if ($state['attempts'] >= $max) {
             fclose($fp);
-            Audit::record('security.rate_limited', 'denied', $target, ['reason' => 'too_many_attempts', 'action' => $login ? 'login' : 'profile']);
+            Audit::record('security.rate_limited', 'denied', $target, ['reason' => 'too_many_attempts', 'action' => $action ?? ($login ? 'login' : 'profile')]);
             header('Retry-After: ' . max(1, 900 - (time() - $state['since'])));
             if (!$login) { self::stop(429, 'Trop de tentatives. Réessayez dans 15 minutes.'); }
             self::page('Trop de tentatives. Réessayez dans 15 minutes.', 429);
@@ -221,6 +223,7 @@ class Auth {
     }
 
     private static function page($error = '', $status = 200) {
+        if ($status === 429) { self::stop($status, $error, false); }
         http_response_code($status);
         header('Content-Type: text/html; charset=utf-8');
         require __DIR__ . '/../pages/login.php';
@@ -232,8 +235,18 @@ class Auth {
             Audit::record('access.denied', 'denied', null, ['status' => $status, 'path' => parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH)]);
         }
         http_response_code($status);
+        header('Cache-Control: private, no-store, max-age=0');
+        header('X-Content-Type-Options: nosniff');
+        header_remove('Content-Disposition');
+        header_remove('Content-Length');
+        if (ErrorPage::wantsHtml()) {
+            ErrorPage::render($status, $message);
+            exit;
+        }
         header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['err' => $status, 'message' => $message]);
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'HEAD') {
+            echo json_encode(['err' => $status, 'message' => $message]);
+        }
         exit;
     }
 

@@ -5,6 +5,11 @@ class Bootstrap {
 
     public static function run() {
         spl_autoload_register(['Bootstrap', 'autoload']);
+        set_exception_handler(function ($error) {
+            error_log('h5ai unhandled: ' . $error);
+            if (headers_sent()) { exit; }
+            Auth::stop(500, 'Une erreur est survenue.', false);
+        });
         self::normalize_script_name();
         Routes::apply();
         putenv('LANG=en_US.UTF-8');
@@ -13,7 +18,10 @@ class Bootstrap {
         Auth::start();
         Account::apply();
         Admin::apply();
+        Previewadmin::apply();
         Journal::apply();
+        Media::apply();
+        Storyboards::apply();
 
         // Intercept files before constructing h5ai's directory/API context.
         Gateway::apply();

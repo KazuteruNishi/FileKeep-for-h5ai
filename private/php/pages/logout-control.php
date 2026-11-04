@@ -8,6 +8,7 @@
 <nav aria-label="Compte utilisateur">
 <a href="<?= Auth::escape(Routes::url('account')) ?>"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="3"/><path d="M5 21v-3a7 7 0 0 1 14 0v3"/></svg>Mon compte</a>
 <?php if (Users::isAdmin() && !Users::mustChangePassword()) { ?><a href="<?= Auth::escape(Routes::url('admin')) ?>"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Administration</a>
+<a href="<?= Auth::escape(Routes::url('previews')) ?>"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m9 8 7 4-7 4z"/></svg>Aperçus vidéo</a>
 <a href="<?= Auth::escape(Routes::url('logs')) ?>"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10l3 3v15H4V3h3M8 9h8M8 13h8M8 17h5"/></svg>Journaux</a><?php } ?>
 </nav>
 <form method="post" action="<?= Auth::escape(Routes::url('logout')) ?>">

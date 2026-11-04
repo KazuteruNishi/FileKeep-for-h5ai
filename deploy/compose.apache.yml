@@ -1,9 +1,9 @@
-# Merge these settings into the existing apache service, preserving data volumes
-# and its frontend network. Paths refer to the Docker host, not this workstation.
+# Merge into the existing apache service, keeping its data volumes and network.
+# All source paths refer to the Docker host.
+# Keep the existing Apache image. Create/chown the storyboard host directory to
+# 33:33 before starting the worker (see README), then merge its service below.
 services:
   apache:
-    # Keep the image already used by the existing service. No build required.
-    image: php:8.5.1RC2-apache
     command:
       - /bin/sh
       - -ec
@@ -12,13 +12,13 @@ services:
         apache2ctl -t
         exec apache2-foreground
     environment:
+      H5AI_STORYBOARD_WORKER: external
       H5AI_AUTH_FILE: /run/secrets/h5ai.htpasswd
       H5AI_HTTPS: "1"
       H5AI_USERS_DIR: /var/lib/h5ai/users
       H5AI_AUTH_STATE: /var/lib/h5ai/users/login-attempts
-      # Optional: set the actual Traefik IP to trust its X-Forwarded-For header.
+      # Optional: replace with the actual Traefik IP on the shared network.
       # H5AI_TRUSTED_PROXIES: "172.21.0.2"
-      # Existing bcrypt account chosen as initial administrator.
       H5AI_ADMIN_USER: ton_identifiant
     volumes:
       - /docker/apache2/auth/users.htpasswd:/run/secrets/h5ai.htpasswd:ro
@@ -29,3 +29,38 @@ services:
       - traefik.http.routers.apache.middlewares=apache-force-https
       - traefik.http.middlewares.apache-force-https.redirectscheme.scheme=https
       - traefik.http.middlewares.apache-force-https.redirectscheme.permanent=true
+
+  storyboards:
+    image: h5ai-storyboards:local
+    build:
+      context: /docker/apache2/website/_h5ai/deploy
+      dockerfile: Dockerfile
+      args:
+        PHP_IMAGE: php:8.5.12-cli
+    restart: unless-stopped
+    # Independent from Apache: no depends_on, health gate or shared process.
+    # Bound decoder failures so they do not exhaust the host's RAM/processes.
+    cpus: 1.0
+    mem_limit: 2g
+    memswap_limit: 2g
+    pids_limit: 256
+    oom_score_adj: 500
+    init: true
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      H5AI_USERS_DIR: /var/lib/h5ai/users
+      H5AI_STORYBOARD_WORKER: external
+      H5AI_STORYBOARD_CONCURRENCY: "10"
+    volumes:
+      # Mirror ALL Apache video mounts at identical container paths, read-only.
+      - /docker/apache2/website:/var/www/html:ro
+      # Example if Apache also mounts an external media folder:
+      # - /srv/partage/Documents:/var/www/html/Documents:ro
+      - /docker/apache2/auth/managed/storyboards:/var/lib/h5ai/users/storyboards:rw

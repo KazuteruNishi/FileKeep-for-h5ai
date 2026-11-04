@@ -183,14 +183,15 @@
 
     - show: boolean, initial visible to first time users
     - qrcode: boolean, show a QR-Code
-    - qrColor: string, QR-Code fill color
+    - qrFill: string, QR-Code fill color
+    - qrBack: string, QR-Code background color (transparent uses the page background)
     */
     "info": {
         "enabled": true,
         "show": false,
         "qrcode": true,
-        "qrFill": "#999",
-        "qrBack": "#fff"
+        "qrFill": "#fff",
+        "qrBack": "transparent"
     },
 
     /*

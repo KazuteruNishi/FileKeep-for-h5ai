@@ -546,6 +546,37 @@ textarea {
     width: 240px
 }
 
+#info .icon img.fk-info-preview {
+    width: 240px;
+    height: 180px;
+    object-fit: contain
+}
+
+#view .icon img.fk-info-preview {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain
+}
+
+#view .icon.fk-video-preview {
+    position: relative
+}
+
+#view .icon.fk-video-preview::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: var(--fk-play-size, 20px);
+    height: var(--fk-play-size, 20px);
+    background: #fff;
+    -webkit-mask: url(../images/themes/default/vid.svg) center / contain no-repeat;
+    mask: url(../images/themes/default/vid.svg) center / contain no-repeat;
+    filter: drop-shadow(0 0 2px #000);
+    pointer-events: none
+}
+
 #info .block {
     border-top: 1px solid rgba(0, 0, 0, 0.05);
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);
@@ -555,7 +586,9 @@ textarea {
 
 #info .label {
     font-size: 16px;
-    margin-bottom: 16px
+    margin-bottom: 16px;
+    white-space: normal;
+    overflow-wrap: anywhere
 }
 
 #info .time,
@@ -1703,6 +1736,26 @@ select {
 #view.view-details .square img {
     width: 16px;
     height: 16px
+}
+
+/* Enlarge previews inside the existing row, keeping both separators clear. */
+#view.view-details .item .square:has(img.fk-info-preview) {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    left: var(--fk-preview-left, 14px);
+    width: 40px !important;
+    height: auto !important;
+    padding: 0
+}
+
+#view.view-details .item .square img.fk-info-preview {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    box-shadow: none
 }
 
 #view.view-details .label {
