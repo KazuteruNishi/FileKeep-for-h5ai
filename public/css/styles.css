@@ -593,7 +593,8 @@ textarea {
 
 #info .time,
 #info .size,
-#info .content {
+#info .content,
+#info .fk-info-views {
     line-height: 20px;
     height: 20px
 }
@@ -1643,7 +1644,8 @@ select {
 
 #view.view-details .header .label,
 #view.view-details .header .date,
-#view.view-details .header .size {
+#view.view-details .header .size,
+#view.view-details .header .views {
     transition: all .2s ease-in-out;
     line-height: 24px;
     padding: 0 8px 16px 8px;
@@ -1653,7 +1655,8 @@ select {
 
 #view.view-details .header .label:hover,
 #view.view-details .header .date:hover,
-#view.view-details .header .size:hover {
+#view.view-details .header .size:hover,
+#view.view-details .header .views:hover {
     opacity: 1;
     color: #42a5f5
 }
@@ -1706,7 +1709,8 @@ select {
 
 #view.view-details .label,
 #view.view-details .date,
-#view.view-details .size {
+#view.view-details .size,
+#view.view-details .views {
     padding: 0 8px
 }
 
@@ -1724,7 +1728,8 @@ select {
 
 #view.view-details .item .label,
 #view.view-details .item .date,
-#view.view-details .item .size {
+#view.view-details .item .size,
+#view.view-details .item .views {
     line-height: 30px
 }
 
@@ -2055,3 +2060,19 @@ select,
 #backlink, #backlink:active, #backlink:visited{
     display: none;
 }
+/* Dedicated views column, including when date and size collapse on narrow lists. */
+#view .views { display: none; width: 70px; text-align: right; white-space: nowrap; }
+#view.view-details .views {
+    display: block;
+    position: absolute;
+    right: 16px;
+    top: 0;
+    width: 70px;
+    font-variant-numeric: tabular-nums;
+}
+#view.view-details .views { right: 262px; }
+#view.view-details .size { right: 16px; }
+#view.view-details .date { right: 116px; }
+#view.view-details .label { margin-right: 356px; }
+#view.view-details.width-0 .label { margin-right: 110px; }
+#view.view-details.width-0 .views { right: 16px; }

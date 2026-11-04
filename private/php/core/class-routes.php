@@ -6,7 +6,8 @@ class Routes {
         $root = rtrim(str_replace('\\', '/', dirname(dirname(dirname(Auth::endpoint())))), '/') . '/';
         $paths = ['home' => '', 'account' => 'mon-compte', 'admin' => 'administration',
             'photo' => 'mon-compte/photo', 'logout' => 'deconnexion', 'logs' => 'journaux', 'previews' => 'administration/apercus',
-            'subtitles' => 'lecture/sous-titres', 'storyboards' => 'lecture/planches'];
+            'subtitles' => 'lecture/sous-titres', 'storyboards' => 'lecture/planches', 'views' => 'lecture/vues',
+            'progress' => 'lecture/progression', 'filelogs' => 'journaux/fichiers', 'fileevents' => 'lecture/evenements'];
         return $root . $paths[$name];
     }
 
@@ -31,7 +32,7 @@ class Routes {
         if (!in_array($_SERVER['REQUEST_METHOD'], ['GET', 'HEAD'], true)) { return; }
         $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
         $target = null;
-        foreach (['admin', 'account', 'photo', 'logs', 'previews'] as $name) {
+        foreach (['admin', 'account', 'photo', 'logs', 'filelogs', 'previews'] as $name) {
             if ($path !== self::url($name) && self::matches($name)) { $target = self::url($name); break; }
         }
         if (self::matches('logout')) { $target = self::url('home'); }

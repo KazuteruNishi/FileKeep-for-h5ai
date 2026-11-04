@@ -20,6 +20,9 @@ class Bootstrap {
         Admin::apply();
         Previewadmin::apply();
         Journal::apply();
+        Filejournal::apply();
+        Videoviews::apply();
+        Playbackprogress::apply();
         Media::apply();
         Storyboards::apply();
 

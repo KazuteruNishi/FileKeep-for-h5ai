@@ -19,6 +19,7 @@
   }
   window.FileKeepInfoPreview = async (target, href, folder) => {
     if (!target) return;
+    window.FileKeepViews?.info(target, href, folder);
     states.get(target)?.abort();
     const request = new AbortController(); states.set(target, request);
     const { signal } = request;
@@ -83,6 +84,7 @@
     }
   }, { rootMargin: '100px' });
   window.FileKeepObservePreview = (images, href, folder) => {
+    window.FileKeepViews?.observe(images, href, folder);
     if (folder) return;
     for (const image of Array.from(images)) {
       image.dataset.previewHref = href; observer.observe(image);

@@ -1007,3 +1007,69 @@ imports sont redirigés vers le bundle Mediabunny local ; le code des codecs
 n'est pas modifié. Les licences sont dans `public/js/audio/LICENSE-*.txt` et
 les informations de compilation et de provenance dans `SOURCES-ac3.md` et
 `SOURCES-dts.md` du même dossier.
+
+## Journaux des fichiers ouverts
+
+L'entrée **Administration** du menu du compte ouvre l'espace administrateur.
+Son menu de gauche regroupe **Utilisateurs**, **Aperçus vidéo**, **Journaux de
+sécurité** et **Journaux des fichiers**, avec la page courante mise en évidence.
+Sur petit écran, cette navigation devient une barre horizontale défilante.
+Le menu du compte conserve une seule entrée pour l'administration, en plus de
+**Mon compte** et **Déconnexion**.
+
+La page **Journaux des fichiers** est disponible à l'adresse
+`/journaux/fichiers` (préfixée par le chemin du site si nécessaire). Cette page
+est distincte des journaux de sécurité et réservée aux administrateurs. Elle
+présente une ligne par ouverture, de la plus récente à la plus ancienne, avec
+date et heure de Paris, utilisateur, chemin, type, temps visionné ou écouté,
+position atteinte, durée du média et état. Les filtres portent sur les dates,
+l'utilisateur, le chemin et le type ; les pages contiennent 50 ouvertures.
+
+Les ouvertures explicites depuis la liste et les aperçus du site sont enregistrées.
+Le simple survol, les miniatures et les requêtes réseau de préchargement ne créent
+pas d'ouverture. Pour les vidéos et les musiques lues dans les lecteurs du site,
+le temps effectif est actualisé toutes les dix secondes, à la pause, après un
+déplacement et à la fermeture. Les pauses, chargements et sauts ne comptent pas.
+Revoir un passage augmente ce temps : il est distinct de la position de lecture.
+La mesure vient du navigateur ; une fermeture brutale peut perdre les dernières
+secondes. Les lecteurs externes et les ouvertures directes hors de l'interface
+ne transmettent pas leur temps de lecture. Le journal ne reconstitue pas les
+ouvertures antérieures à son installation. Utiliser **Actualiser le journal**
+pour consulter les dernières mises à jour.
+
+Les enregistrements sont conservés 60 jours dans `H5AI_USERS_DIR/file-journal`,
+hors du partage public, avec des fichiers privés et des écritures atomiques.
+La limite est de 2 000 nouvelles ouvertures par jour pour l'ensemble du site ;
+les lectures déjà enregistrées peuvent continuer à actualiser leur temps.
+Un échec du journal n'empêche pas d'ouvrir ou de lire le fichier. Aucun montage,
+rebuild ou changement du conteneur Apache ou du générateur d'aperçus n'est requis.
+
+## Progression de lecture par utilisateur
+
+La position de chaque vidéo est enregistrée côté serveur pour le compte connecté,
+toutes les dix secondes de lecture, à la pause, après un déplacement et à la fermeture
+du lecteur. Elle est restaurée à la prochaine ouverture, y compris après rechargement
+ou depuis un autre navigateur connecté au même compte. Une vidéo terminée repart
+du début. La fermeture forcée du navigateur peut perdre les dernières secondes.
+
+Les données sont privées dans `H5AI_USERS_DIR/playback-progress`, séparées par
+utilisateur, avec contrôle des droits sur chaque vidéo et protection CSRF. Les
+écritures sont atomiques et les sauvegardes arrivées en retard sont ignorées.
+Le suivi est attaché au nom du compte et au chemin du fichier ; renommer le compte
+ou déplacer la vidéo crée un suivi distinct. Remplacer la vidéo réinitialise son
+suivi lorsque sa taille ou sa date de modification change.
+
+## Compteurs de vues des vidéos
+
+La liste affiche un compteur global par vidéo, partagé entre tous les utilisateurs.
+Une vue est comptée après 60 secondes de lecture effective dans une même ouverture
+du lecteur. Les pauses et les déplacements dans la vidéo sont exclus ; reprendre
+la lecture dans ce lecteur conserve les secondes déjà regardées. Une nouvelle
+ouverture du lecteur peut comptabiliser une nouvelle vue après une minute.
+
+Les compteurs sont conservés dans `H5AI_USERS_DIR/video-views`, hors du partage
+public. Les requêtes vérifient les droits sur la vidéo et le jeton CSRF ; les
+incréments simultanés sont protégés par un verrou. Le compteur est attaché au
+chemin du fichier : déplacer ou renommer une vidéo crée un compteur distinct.
+La mesure de la minute est effectuée par le navigateur. Les compteurs des autres
+utilisateurs sont actualisés lors du prochain affichage de la liste.

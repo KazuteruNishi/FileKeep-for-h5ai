@@ -223,6 +223,9 @@
       const assTracks = new Map(); const trackUrls = [];
       let chapterData = [];
       const on = (target, event, handler, capture = false) => target.addEventListener(event, handler, { signal: abort.signal, capture });
+      window.FileKeepViews?.track(video, href, abort.signal);
+      const playbackProgress = window.FileKeepProgress?.track(video, href, abort.signal);
+      window.FileKeepFileJournal?.track(video, href, abort.signal);
       if (audioPreferences) {
         video.volume = audioPreferences.volume;
         video.muted = audioPreferences.muted;
@@ -1091,7 +1094,10 @@
           });
           const ext = new URL(href, location.href).pathname.split('.').pop().toLowerCase();
           const mime = { mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mkv: 'video/x-matroska', mov: 'video/quicktime' }[ext];
-          await player.load(new URL(href, location.href).href, null, mime);
+          const resumePosition = await playbackProgress?.ready;
+          if (disposed) return;
+          await player.load(new URL(href, location.href).href, resumePosition ?? null, mime);
+          if (!disposed) playbackProgress?.start();
           if (!disposed) { animateButtons(); configureProgress(); }
           if (!disposed) discoverSubtitles();
           if (!disposed && state.isMkv) {
@@ -1130,7 +1136,15 @@
           if (!disposed) {
             playbackStatus.textContent = error.message || 'Ce format audio ou vidéo est incompatible avec le navigateur.';
             // Keep an actionable fallback when Shaka itself failed to initialize.
-            if (!ui) { video.controls = true; video.src = href; root.dataset.player = 'native-fallback'; }
+            if (!ui) {
+              on(video, 'loadedmetadata', async () => {
+                const position = await playbackProgress?.ready;
+                if (disposed) return;
+                if (position > 0 && position < video.duration) video.currentTime = position;
+                playbackProgress?.start();
+              });
+              video.controls = true; video.src = href; root.dataset.player = 'native-fallback';
+            }
           }
         }
       }
