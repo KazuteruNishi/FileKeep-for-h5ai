@@ -205,7 +205,7 @@ Remplacez :
 services:
   apache:
     container_name: apache
-    image: php:8.5-apache
+    image: php:8.5.12-apache
     restart: unless-stopped
 
     command:
@@ -222,6 +222,7 @@ services:
       H5AI_USERS_DIR: /var/lib/h5ai/users
       H5AI_AUTH_STATE: /var/lib/h5ai/users/login-attempts
       H5AI_HTTPS: "1"
+      H5AI_STORYBOARD_WORKER: external
 
     volumes:
       - /docker/apache2/website:/var/www/html
@@ -272,15 +273,14 @@ n'est imposée en production.
 Depuis le dossier du **Compose qui gère déjà votre service Apache** :
 
 ```bash
-sudo docker compose config --quiet
-sudo docker compose up -d --no-deps --no-build apache
+sudo docker-compose config --quiet
+sudo docker-compose up -d --no-deps --no-build apache
 sudo docker exec apache apache2ctl -t
 ```
 
 Le résultat attendu est `Syntax OK`.
 
-Avec l'ancienne commande Compose, utilisez `sudo docker-compose` à la place
-de `sudo docker compose`. Si votre projet a été créé avec un nom explicite,
+Les commandes utilisent `docker-compose`. Si votre projet a été créé avec un nom explicite,
 conservez-le avec `-p NOM_DU_PROJET`.
 
 Ouvrez ensuite :
@@ -328,7 +328,7 @@ Ajoutez **l'adresse réellement obtenue** à l'environnement Apache. Exemple :
 H5AI_TRUSTED_PROXIES: "172.21.0.2"
 ```
 
-Puis réappliquez le service avec `docker compose up -d --no-deps --no-build apache`.
+Puis réappliquez le service avec `docker-compose up -d --no-deps --no-build apache`.
 Une liste séparée par des virgules et les CIDR IPv4/IPv6 sont acceptés. Déclarez
 uniquement les proxys approuvés ; mettez à jour la valeur si Traefik change d'IP.
 Les en-têtes `X-Forwarded-For` des autres sources sont ignorés.
@@ -403,10 +403,23 @@ de Shaka, avec ses sous-menus. Aucun panneau ASS séparé n'est ajouté.
 Le lecteur reçoit ses propres événements de souris et de clavier :
 l'aperçu h5ai ne doit pas annuler les actions sur ses commandes.
 
+Les chapitres simples intégrés aux MKV sont lus dans l'édition par défaut.
+La barre est alors découpée en segments : le chapitre survolé s'agrandit,
+son nom accompagne l'aperçu et le chapitre courant apparaît à côté du temps,
+sans action au clic. Sans chapitres, l'affichage habituel est conservé.
+Le volume et l'état muet choisis sont conservés lors du passage à une autre
+vidéo, y compris avec le décodage audio logiciel. Cette préférence est enregistrée
+localement dans le navigateur et restaurée après rechargement ou réouverture du
+site. Si le stockage du navigateur est indisponible, elle reste conservée dans
+l'onglet pendant la navigation entre vidéos.
+Les éditions ordonnées, qui peuvent définir un montage différent ou relier
+plusieurs fichiers, ne sont pas présentées comme des repères de la vidéo native.
+
 L'extraction des pistes ASS/SSA des fichiers MKV est réalisée en PHP ; leur
 affichage utilise JASSUB/libass dans le navigateur, avec les styles et les polices
-jointes lorsqu'elles sont disponibles. Aucun FFmpeg ou FFprobe à installer sur
-le serveur, service externe ou conteneur supplémentaire n'est requis. Les fichiers JavaScript, WebAssembly
+jointes lorsqu'elles sont disponibles. Les sous-titres n'exigent aucun décodeur
+sur le serveur. Les planches d'aperçus utilisent FFmpeg et FFprobe, installés par
+`deploy/Dockerfile` dans le conteneur séparé `storyboards`. Les fichiers JavaScript, WebAssembly
 et la police de remplacement sont livrés dans `public/js/jassub`. Shaka est livré
 dans `public/js/shaka` et `public/css/shaka`. Aucune police Google ni autre
 ressource distante n'est nécessaire à l'interface.
@@ -429,7 +442,7 @@ ressource distante n'est nécessaire à l'interface.
   AC3/E-AC3 et DTS utilisent les extensions Mediabunny basées sur libavcodec
   (FFmpeg), exécutées en WebAssembly dans le navigateur.
   Les fichiers sont fournis dans `public/js/audio` et `public/js/flac-audio.js` :
-  Aucun programme FFmpeg/FFprobe n'est lancé dans Apache.
+  Ce décodage audio reste dans le navigateur ; FFmpeg dans `storyboards` sert aux planches.
 - Pour ces formats, le menu Shaka **Paramètres → Piste audio** permet de choisir
   entre les pistes FLAC, AC3, E-AC3 et DTS quand plusieurs sont présentes. Les
   décodeurs nécessaires sont chargés uniquement à la demande.
@@ -449,6 +462,415 @@ ressource distante n'est nécessaire à l'interface.
 `deploy/apache-h5ai.conf`, qui autorise les fichiers `.wasm` du moteur de
 sous-titres et leur associe le bon type MIME, puis redémarrer Apache.
 Le plein écran du lecteur inclut les sous-titres.
+
+### Planches permanentes des aperçus
+
+Le panneau d'informations affiche les images en conservant leurs proportions.
+Pour une vidéo, il utilise une miniature des planches déjà disponibles ; à défaut,
+l'icône Play reste visible. La liste des fichiers utilise également ces miniatures,
+avec un symbole Play superposé pour les vidéos. Les dimensions des emplacements
+restent inchangées. Les miniatures de la liste sont chargées à l'approche de la
+zone visible ; leur consultation ne met pas de nouvelles vidéos en génération.
+
+La première ouverture d'une vidéo met sa génération en file d'attente. Le worker
+PHP lance FFmpeg dans un conteneur séparé, sans dépendre de la durée
+de lecture ni de l'onglet. Jusqu'à dix vidéos sont traitées en parallèle, avec un thread
+de décodage. Les planches achevées sont utilisables pendant la génération des suivantes.
+
+- Stockage : `H5AI_USERS_DIR/storyboards`, soit `/docker/apache2/auth/managed/storyboards`
+  sur l'hôte avec la configuration fournie. Il n'apparaît pas dans l'interface,
+  même pour l'admin, et reste accessible directement sur la machine.
+- Une planche regroupe 25 miniatures de **192 × 108 pixels**, sans version plus grande.
+  Le pas commence à deux secondes et augmente sur les vidéos longues pour limiter
+  la collection à environ 1 800 miniatures par vidéo.
+- L'identité des planches est le SHA-256 complet du contenu. Le calcul est réalisé
+  en arrière-plan. Après déplacement, renommage ou copie, le contenu est identifié
+  à nouveau puis les planches existantes sont réutilisées, sans nouvelle génération.
+- Les planches et leurs index sont conservés **sans expiration** et ne participent
+  pas au nettoyage du cache des sous-titres. Prévoir l'espace disque correspondant.
+- Chaque accès à une planche vérifie les droits sur la vidéo actuelle. Le lecteur
+  précharge la planche courante et ses voisines, avec au plus six planches décodées
+  en mémoire. Les anciennes captures à la demande servent de repli pendant la préparation.
+- Si le générateur est arrêté, les planches terminées restent présentes. Le worker relancé
+  au démarrage reprend la file et les planches manquantes. Les erreurs sont écrites
+  dans `H5AI_USERS_DIR/storyboards/worker.log`.
+
+Pour activer cette fonction sur une installation existante, transférer les nouveaux
+fichiers PHP/JavaScript et `deploy/Dockerfile`. Garder l’image Apache actuelle et
+ajouter `H5AI_STORYBOARD_WORKER: external` à son environnement. Ajouter le service
+`storyboards` de `deploy/compose.apache.yml` au même Compose. Le Dockerfile construit
+uniquement le générateur PHP CLI + FFmpeg.
+La version PHP se définit uniquement dans `storyboards.build.args.PHP_IMAGE` du
+Compose ; le Dockerfile reçoit cette valeur avec `ARG PHP_IMAGE`, sans défaut.
+
+```yaml
+services:
+  storyboards:
+    build:
+      context: /docker/apache2/website/_h5ai/deploy
+      dockerfile: Dockerfile
+      args:
+        PHP_IMAGE: php:8.5.12-cli
+```
+
+Cet extrait complète le service entier fourni dans `deploy/compose.apache.yml`.
+Le Dockerfile commence par `ARG PHP_IMAGE` puis `FROM ${PHP_IMAGE}` : aucun fichier
+`.env` n'est nécessaire pour cette version. Choisir une image officielle PHP CLI
+compatible avec `apt-get`, sans suffixe `alpine`. La version de FFmpeg provient
+des dépôts de cette image et est installée lors de la construction.
+
+Reproduire tous les montages de vidéos d’Apache aux mêmes chemins internes dans
+le générateur, en lecture seule.
+Seul le dossier des planches est partagé en écriture, pas les comptes ni les mots
+de passe. Le générateur tourne avec UID/GID 33, sans réseau ni port exposé.
+
+```sh
+sudo mkdir -p /docker/apache2/auth/managed/storyboards
+sudo chown 33:33 /docker/apache2/auth/managed/storyboards
+sudo chmod 700 /docker/apache2/auth/managed/storyboards
+cd /docker/docker-build
+sudo docker-compose config --quiet
+sudo docker-compose build --pull --no-cache storyboards
+sudo docker-compose up -d --no-deps storyboards
+sudo docker-compose up -d --no-deps --no-build apache
+```
+
+Apache est recréé pour charger la variable avec son image actuelle. Le générateur
+surveille la file toutes les secondes et reprend les travaux après redémarrage.
+Apache ne dépend pas du générateur : son arrêt ou son redémarrage ne bloque ni
+le site ni la lecture. Les nouvelles planches attendent son retour ; celles déjà
+créées restent accessibles. Le lecteur conserve les captures à la demande en repli.
+Le service fourni limite l'ensemble du générateur à un CPU, 2 Gio sans swap et 256 processus,
+avec redémarrage automatique après un plantage. Ces limites concernent uniquement
+le générateur et peuvent être ajustées à la machine.
+Faire Ctrl+F5 après le transfert des fichiers du lecteur.
+Sans `H5AI_STORYBOARD_WORKER=external`, le mode intégré reste disponible et exige
+FFmpeg dans Apache.
+Le volume privé existant doit rester monté en écriture et appartenir à UID 33.
+`H5AI_FFMPEG` et `H5AI_FFPROBE` peuvent définir les chemins des exécutables ; sinon
+les commandes `ffmpeg` et `ffprobe` du conteneur sont utilisées.
+`H5AI_PHP_CLI` permet de préciser le PHP CLI si son chemin diffère de celui
+fourni par l'image officielle.
+
+### Commandes utiles pour les planches
+
+Le service `storyboards` lance jusqu'à **10 travaux en parallèle** par défaut.
+Le réglage se fait uniquement dans son environnement Compose :
+
+```yaml
+environment:
+  H5AI_USERS_DIR: /var/lib/h5ai/users
+  H5AI_STORYBOARD_WORKER: external
+  H5AI_STORYBOARD_CONCURRENCY: "10"
+```
+
+La valeur est comprise entre 1 et 32. Chaque place prend la prochaine vidéo de
+la file, selon l'ordre manuel ou les priorités et le tri alphabétique. Une vidéo
+terminée libère immédiatement une place ; il ne s'agit pas de lots bloquants.
+L'ordre est celui des démarrages : des vidéos lancées ensemble peuvent terminer
+dans un ordre différent selon leur durée et leur complexité.
+La pause et l'arrêt concernent tous les travaux actifs. Les vidéos identiques
+partagent un verrou pour empêcher deux écritures simultanées sur les mêmes planches.
+Le mode intégré sans `--watch` reste séquentiel.
+
+Les limites Compose sont partagées par tous les travaux, pas par vidéo. Avec
+dix décodeurs, l'exemple utilise `mem_limit: 2g`, `memswap_limit: 2g` et
+`pids_limit: 256`. Le CPU reste limité à `cpus: 1.0` pour protéger les autres
+services : dix travaux ne signifient donc pas une vitesse dix fois supérieure.
+Adapter la limite CPU aux ressources disponibles si nécessaire. Les vidéos
+haute résolution peuvent demander davantage de mémoire ; une erreur de travail
+est affichée dans la page sans bloquer les autres vidéos ni Apache.
+
+Après transfert des fichiers PHP, appliquer le réglage sans reconstruire l'image :
+
+```bash
+cd /docker/docker-build
+sudo docker-compose up -d --no-deps --no-build --force-recreate storyboards
+```
+
+Les administrateurs disposent aussi de la page **Aperçus vidéo**, accessible dans
+le menu du compte à `/administration/apercus`. Elle présente les vidéos connues
+terminées, en génération, en attente et en erreur, avec actualisation toutes les
+trois secondes.
+Chaque catégorie dispose d'un tableau avec les colonnes fichier/dossier, état,
+priorité et progression. Chaque tableau possède une recherche indépendante sur
+les noms et chemins, insensible à la casse et aux accents, et une pagination de
+dix vidéos avec compteur de résultats et boutons précédent/suivant. La recherche
+et la page choisie sont conservées pendant les actualisations ; la recherche
+revient à la première page quand son texte change. La page est ajustée si le
+nombre de résultats diminue. Les tableaux défilent horizontalement sur petit écran.
+La file conserve ses positions réelles même pendant une recherche ; les flèches
+déplacent chaque vidéo par rapport à ses voisines dans la file complète.
+Uniquement dans **En attente**, la colonne **Priorité** est modifiable directement
+avec une liste déroulante Basse/Normale/Haute/Urgente. Le changement est enregistré
+immédiatement et rétablit le tri automatique par priorité puis nom, même si un
+ordre manuel était actif. Les travaux déjà démarrés ne sont pas interrompus.
+Ce menu utilise la palette sombre du site, une coche sur le choix actif et aucun
+champ de recherche. Il accepte les flèches du clavier, Entrée et Échap, et reste
+visible au-dessus du tableau sans être découpé par son défilement.
+Après un changement de priorité ou d'ordre, le tableau conserve la page courante
+et la recherche. Une vidéo déplacée vers une autre page n'est pas suivie automatiquement.
+La confirmation précise le nom et la priorité enregistrée ; la vidéo est brièvement
+mise en évidence si elle reste sur la page affichée. La page n'est ajustée que si
+elle n'existe plus après une diminution du nombre de résultats.
+Les autres catégories gardent un badge en lecture seule. Le serveur refuse la
+modification directe si la vidéo a quitté la file entre l'affichage et la validation.
+Dans **En cours**, un bouton devant chaque vidéo permet de mettre uniquement
+son traitement en pause puis de le reprendre. La vidéo reste dans ce tableau
+avec l'état **En pause** et sa progression conservée. Sa place reste réservée :
+elle n'est pas remplacée par la prochaine vidéo de la file. Les autres places
+continuent de fonctionner. Play reprend cette même vidéo en priorité sur sa
+place réservée, avec un état transitoire **Reprise…**, sans la renvoyer dans
+**En attente**. La reprise repart des planches complètes déjà produites. Une pause pendant le calcul
+de l'empreinte impose de recommencer ce calcul. Les pauses individuelles sont
+persistantes et ne sont pas levées par le bouton global **Reprendre** ; utiliser
+le bouton Play de la vidéo. **Arrêter et vider la file** annule aussi ces travaux.
+Le titre distingue les traitements actifs des vidéos en pause. La colonne Action
+garde une largeur fixe et les noms utilisent l'espace restant. Les fichiers CSS
+et JavaScript de cette page portent une empreinte de leur contenu dans leur URL
+pour renouveler le cache à chaque mise à jour.
+
+Après un arrêt brutal du conteneur, le générateur réconcilie automatiquement les
+index et la file avant de lancer des travaux. Un traitement resté en calcul ou
+en génération sans processus actif passe en **Reprise…**, même si son fichier
+de file avait disparu. Les planches complètes sont conservées et les travaux
+interrompus reprennent avant les nouvelles vidéos. Une génération déjà achevée
+est reconnue sans la refaire. Les pauses individuelles et globales ainsi que les
+annulations restent respectées ; un verrou encore détenu n'est pas supprimé.
+L'empreinte connue est réutilisée si la signature de la vidéo n'a pas changé.
+Une source absente ou modifiée passe en erreur au lieu de rester faussement active.
+
+Si un sous-processus disparaît pendant que le superviseur fonctionne, il est
+relancé automatiquement, avec un maximum de trois tentatives avant passage en
+erreur. Les erreurs normales de décodage restent dans la catégorie En erreur.
+Pour charger cette récupération sur une installation existante, transférer
+`private/php/core/class-storyboards.php`, puis exécuter
+`sudo docker-compose restart storyboards`. Les anciens traitements bloqués sont
+récupérés au démarrage ; aucune suppression manuelle de verrou n'est nécessaire.
+La catégorie **Annulées** regroupe les traitements arrêtés. Son bouton **Vider
+l'historique** retire toutes les annulations affichées, même lorsqu'une recherche
+est active. Les vidéos, les planches et leurs index sont conservés ; les autres
+catégories restent inchangées. Une vidéo relancée puis annulée de nouveau réapparaît
+dans l'historique. Cette action est réservée aux administrateurs et protégée par CSRF.
+Une corbeille rouge en fin de ligne permet aussi d'agir individuellement : dans
+**En attente**, elle annule uniquement ce traitement et le déplace vers **Annulées** ;
+dans **Annulées**, elle retire uniquement cette entrée de l'historique. Les vidéos,
+les planches et leurs index sont conservés. Une vidéo déjà démarrée ne peut pas
+être annulée depuis le tableau d'attente ; actualiser puis utiliser ses commandes.
+Les tableaux **Terminés**, **Annulées** et **En erreur** affichent les événements
+du plus récent au plus ancien. La date de fin, d'annulation ou d'échec est
+enregistrée pour les nouveaux événements ; les anciennes entrées utilisent la
+date de modification de leur index. La file d'attente conserve son ordre de traitement.
+Chaque historique affiche une colonne **Date et heure**, au format français
+avec les secondes et le fuseau **Europe/Paris** (heure d'été/hiver automatique).
+Les catégories **Terminés** et **En erreur** disposent également d'un bouton
+**Vider l'historique** et d'une corbeille par ligne. Chaque action est limitée à
+sa catégorie ; les traitements actifs et la file d'attente restent inchangés.
+La suppression de l'historique conserve les index et les planches : les aperçus
+terminés restent utilisables et ne sont pas régénérés au prochain préchargement.
+Cliquer sur un nom de vidéo ouvre son dossier dans un nouvel onglet et lance
+automatiquement le lecteur habituel sur cette vidéo, avec ses sous-titres et
+la navigation précédente/suivante du dossier. Le lien conserve les contrôles
+d'accès du site et la page de suivi reste ouverte.
+La page affiche aussi la taille totale des fichiers du dossier privé des aperçus,
+en incluant les planches, index et fichiers de fonctionnement
+du générateur. Le pourcentage de génération est estimé à partir des miniatures
+produites ; le calcul de l'empreinte est affiché sans pourcentage. Les anciens
+chemins de fichiers déplacés ou remplacés sont exclus de la liste.
+
+Le bouton **Précharger toutes les vidéos** demande au conteneur `storyboards`
+d'exécuter la même recherche que `--enqueue-all`. La recherche est prise en charge
+par le superviseur, même si des vidéos sont déjà en cours, et ne dépend pas de la page
+ouverte. Si le générateur est arrêté, la demande reste en attente de son retour.
+La page, ses données et l'action de préchargement sont réservées aux
+administrateurs ; l'action est protégée par le jeton CSRF.
+
+La page permet de **mettre en pause**, **reprendre** ou **arrêter et vider la
+file**. La pause interrompt le calcul en cours tout en conservant la file. La
+reprise conserve les planches complètes ; la planche interrompue est recréée.
+Le calcul d'empreinte interrompu doit recommencer. L'arrêt annule les vidéos
+en cours et en attente sans supprimer les planches produites. Pour relancer des
+vidéos arrêtées, les sélectionner à nouveau, valider leur préchargement puis
+cliquer sur **Reprendre**. Le site et la lecture restent indépendants de ces actions.
+
+Le menu de sélection s'ouvre comme une liste déroulante avec recherche, groupes
+par dossier et cases à cocher. Il permet de naviguer dans les dossiers et de
+chercher dans leurs sous-dossiers ; les sélections restent cochées pendant la
+navigation. Cocher un dossier inclut récursivement ses vidéos. Cocher un fichier
+ou sous-dossier désélectionne ses parents sélectionnés ; cocher un parent retire
+les sélections de ses descendants. Les dossiers voisins restent sélectionnés.
+Jusqu'à 200 fichiers
+ou dossiers peuvent être sélectionnés ; une recherche affiche au plus 300 résultats.
+Les choix ne sont appliqués qu'après validation dans le menu.
+Les fichiers dont les aperçus sont terminés sont grisés et non sélectionnables.
+Un dossier est désactivé seulement si toutes ses vidéos, sous-dossiers compris,
+sont terminées ; un dossier partiellement traité reste sélectionnable. Le bouton
+**Ouvrir** reste disponible pour consulter le contenu d'un dossier terminé. Ces
+états s'actualisent pendant que le menu est ouvert, sans réinitialiser la recherche
+ni déplacer le défilement. Les sélections devenues complètes sont retirées.
+
+Choisir une priorité **Basse**, **Normale**, **Haute** ou **Urgente**, puis utiliser
+**Précharger la sélection** pour mettre les vidéos en file, ou **Appliquer la
+priorité seulement** pour réordonner les vidéos déjà connues. Une priorité définie
+sur un fichier prend le pas sur celle de son dossier ; le dossier parent le plus
+proche s'applique sinon. Les priorités sont persistantes et relues avant chaque
+vidéo. Elles ne coupent pas celle en cours. À priorité égale, les travaux suivent
+l'ordre alphabétique naturel de leur chemin (dossiers puis fichiers, sans tenir
+compte de la casse ; épisode 2 avant épisode 10). Ce tri s'applique au préchargement
+global, aux sélections et à la commande CLI. La section **En attente** affiche les
+positions calculées par le serveur avec le même tri que le générateur, priorités
+comprises. Une sélection validée pendant une pause attend la
+reprise. Les nouvelles demandes ne remplacent pas celles déjà en attente.
+
+Dans **En attente**, la poignée à six points permet de glisser une vidéo avant
+ou après une autre. Les flèches permettent de la monter ou descendre d'une place,
+y compris au clavier ou sur mobile. Chaque déplacement est enregistré sur le
+serveur et passe la file en **ordre manuel**, qui prend le pas sur les priorités.
+Les vidéos déjà en cours ne sont pas interrompues. Les nouvelles vidéos sont ajoutées
+après la file manuelle existante, puis triées selon leurs priorités et leurs noms.
+Les actualisations ne remplacent pas les lignes pendant un glisser-déposer.
+
+**Rétablir le tri automatique** supprime l'ordre manuel et réapplique les priorités
+puis l'ordre alphabétique naturel. Appliquer une priorité depuis le menu de sélection
+rétablit également ce tri automatique. L'ordre manuel est conservé après redémarrage
+du générateur ; arrêter et vider la file le supprime. Les commandes de déplacement
+sont réservées aux administrateurs et protégées par le jeton CSRF.
+
+Un générateur déjà démarré conserve le code PHP chargé en mémoire : transférer
+les fichiers ne suffit donc pas à mettre à jour son algorithme de file. Après
+installation de cette version, exécuter `sudo docker-compose restart storyboards`
+une première fois. La page signale ensuite les différences de version entre le
+générateur et le site. Le générateur surveille ses fichiers PHP entre les vidéos
+et pendant l'attente ; une modification le fait quitter avec le code 75. La
+politique `restart: unless-stopped` du Compose le relance avec le nouveau code.
+Une génération déjà démarrée termine avant ce rechargement automatique.
+L'état pause/arrêt est lui aussi persistant : redémarrer le conteneur ne réactive
+pas le traitement. Utiliser **Reprendre** depuis la page pour le réactiver.
+
+Après transfert des fichiers PHP, JavaScript et CSS de cette page, redémarrer le
+générateur pour charger sa nouvelle boucle de surveillance :
+
+```bash
+cd /docker/docker-build
+sudo docker-compose restart storyboards
+```
+
+Exécuter les commandes Compose depuis `/docker/docker-build`, dans le même projet
+que le service Apache. Elles ne nécessitent pas de démarrer le lecteur.
+
+**Générer les aperçus de toutes les vidéos.** Cette commande parcourt les dossiers
+montés sous `/var/www/html` dans le générateur et met les vidéos en file sans les
+ouvrir dans le lecteur. Les dossiers cachés, liens symboliques et sources de
+l'application sont exclus. Les vidéos déjà connues ne sont pas ajoutées à nouveau ;
+les erreurs de plus de 60 secondes peuvent être retentées. Les formats pris en
+charge sont MP4, M4V, MKV, WebM et MOV.
+
+```bash
+cd /docker/docker-build
+sudo docker-compose exec -T storyboards php /var/www/html/_h5ai/private/php/storyboard-worker.php --enqueue-all
+```
+
+Le générateur doit être démarré. La commande termine après la mise en file ; le
+service traite ensuite jusqu'à dix vidéos simultanément, même sans lecteur ouvert. Il ne
+recalcule pas les planches terminées. Les vidéos ajoutées ultérieurement peuvent
+être prises en compte en relançant la commande. Transférer les versions à jour de
+`private/php/storyboard-worker.php` et `private/php/core/class-storyboards.php`
+avant la première utilisation ; ces fichiers sont montés dans le conteneur et
+ne nécessitent pas une reconstruction de l'image.
+
+**Démarrer tous les services du Compose.** Après la préparation initiale des
+dossiers et le transfert des fichiers, cette commande construit le générateur
+si nécessaire et démarre Traefik, Apache et le générateur en arrière-plan. Elle
+applique aussi les modifications de configuration aux conteneurs concernés.
+Elle ne déclenche pas la génération des planches de toutes les vidéos : chaque
+vidéo entre en file à sa première ouverture.
+
+```bash
+cd /docker/docker-build
+sudo docker-compose up -d --build
+```
+
+**Mettre à jour le générateur.** Après modification de `build.args.PHP_IMAGE`,
+reconstruire l'image puis recréer uniquement ce conteneur. Un simple redémarrage
+ne charge pas une nouvelle image de base ; les planches stockées restent présentes.
+
+```bash
+cd /docker/docker-build
+sudo docker-compose config --quiet
+sudo docker-compose build --pull --no-cache storyboards
+sudo docker-compose up -d --no-deps storyboards
+```
+
+**Appliquer la configuration Apache.** Cette commande recrée Apache avec son image
+locale pour charger les nouvelles variables ou les nouveaux montages ; elle
+n'installe pas FFmpeg dans Apache.
+
+```bash
+sudo docker-compose up -d --no-deps --no-build apache
+```
+
+**Vérifier le générateur et ses erreurs.** Le service doit être `Up`. Les erreurs
+de traitement sont aussi enregistrées dans le dossier privé. `worker.log` peut
+ne pas exister tant qu'aucune erreur n'a été enregistrée.
+
+```bash
+sudo docker-compose ps storyboards
+sudo docker-compose logs --tail=100 storyboards
+sudo tail -n 50 /docker/apache2/auth/managed/storyboards/worker.log
+```
+
+**Voir l'état de chaque vidéo.** Le générateur traite les vidéos en parallèle,
+indépendamment de la position de lecture. Les vidéos au-delà de la limite
+attendent une place libre.
+
+```bash
+sudo docker-compose exec -T storyboards php -r '
+foreach (glob("/var/lib/h5ai/users/storyboards/index/*.json") as $file) {
+    $job = json_decode(file_get_contents($file), true);
+    echo ($job["status"] ?? "?"), " | ", ($job["source"] ?? "?"), PHP_EOL;
+}'
+```
+
+| État | Signification |
+| --- | --- |
+| `queued` | Vidéo en attente |
+| `hashing` | Calcul du SHA-256 complet, avant les premières planches |
+| `generating` | Création des planches |
+| `ready` | Traitement terminé |
+| `error` | Échec : consulter les journaux |
+
+**Surveiller la création après fermeture du lecteur.** Le compteur porte sur
+toutes les vidéos. Il augmente à chaque nouvelle planche, pas pendant le calcul
+initial de l'empreinte. Une planche contient 25 miniatures ; une vidéo génère
+plusieurs planches. Quitter avec Ctrl+C.
+
+```bash
+sudo watch -n 5 'find /docker/apache2/auth/managed/storyboards/assets -type f -name "sheet-*.jpg" | wc -l'
+```
+
+**Mesurer le stockage permanent.** Les planches n'expirent pas : cette commande
+permet de suivre l'espace disque occupé.
+
+```bash
+sudo du -sh /docker/apache2/auth/managed/storyboards
+```
+
+**Arrêter ou relancer uniquement le générateur.** Apache et la lecture restent
+indépendants. Après relance, les travaux en file reprennent sans supprimer les
+planches achevées.
+
+```bash
+sudo docker-compose stop storyboards
+sudo docker-compose start storyboards
+```
+
+**Confirmer l'utilisation des planches dans le navigateur.** Dans F12 → Réseau,
+filtrer sur `lecture/planches`, puis ouvrir la vidéo et survoler la barre. Une
+réponse JSON `status: ready` indique une génération terminée. Des requêtes
+contenant `sheet=` avec une réponse `image/jpeg` (200 ou 304) confirment que le
+lecteur charge les planches du serveur. Les images déjà en mémoire peuvent être
+réutilisées sans nouvelle requête. Les aperçus sont demandés sans délai artificiel
+de 100 ms ; la mise en file initiale peut survivre à la fermeture du lecteur.
 
 ## Sessions et sécurité
 
@@ -489,7 +911,7 @@ nécessiteraient une configuration de stockage partagé adaptée.
 | Erreur de montage « not a directory » | Vérifier que les sources `.conf` et `.ini` existent et sont des fichiers, pas des dossiers |
 | Nom de conteneur `apache` déjà utilisé | Relancer depuis le Compose et avec le nom de projet qui gèrent le conteneur existant |
 | `htpasswd: commande introuvable` | Utiliser la méthode via le conteneur ou installer `apache2-utils` sur l'hôte |
-| Accès au socket Docker refusé | Utiliser `sudo docker …` et `sudo docker compose …` |
+| Accès au socket Docker refusé | Utiliser `sudo docker …` et `sudo docker-compose …` |
 | Styles ou boutons absents après mise à jour | Transférer ensemble le PHP et les fichiers `public/`, redémarrer Apache et recharger avec Ctrl + F5 |
 | Les journaux affichent l'IP de Traefik | Configurer `H5AI_TRUSTED_PROXIES` avec son IP actuelle |
 | Avertissement Apache `ServerName`, suivi de `Syntax OK` | Cet avertissement n'empêche pas le démarrage |
