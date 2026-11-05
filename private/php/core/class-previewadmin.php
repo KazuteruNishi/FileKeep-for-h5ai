@@ -43,13 +43,24 @@ class Previewadmin {
                     }
                     Storyboards::reorder($source, $target, $_POST['placement'] ?? 'before');
                 } elseif ($action === 'reset-order') { Storyboards::resetOrder();
-                } elseif (in_array($action, ['select', 'priority'], true)) {
-                    $paths = $_POST['paths'] ?? [];
-                    if (!is_array($paths) || !$paths || count($paths) > 200) { throw new InvalidArgumentException('Sélectionnez entre 1 et 200 fichiers ou dossiers.'); }
+                } elseif (in_array($action, ['select', 'priority', 'selection-exclude'], true)) {
+                    if (isset($_POST['paths_json']) && (!is_string($_POST['paths_json']) || strlen($_POST['paths_json']) > 524288)) {
+                        throw new InvalidArgumentException('Sélection trop volumineuse.');
+                    }
+                    $paths = isset($_POST['paths_json']) && is_string($_POST['paths_json'])
+                        ? json_decode($_POST['paths_json'], true) : ($_POST['paths'] ?? []);
+                    if (!is_array($paths) || !$paths || count($paths) > 5000) { throw new InvalidArgumentException('Sélectionnez entre 1 et 5 000 fichiers ou dossiers.'); }
                     $priority = filter_var($_POST['priority'] ?? 0, FILTER_VALIDATE_INT);
                     if (!in_array($priority, [-100, 0, 100, 1000], true)) { throw new InvalidArgumentException('Priorité invalide.'); }
                     foreach ($paths as $path) {
                         if (!Auth::allowedPath(Storyboards::selectedPath($path))) { throw new InvalidArgumentException('Chemin non autorisé.'); }
+                    }
+                    if ($action === 'selection-exclude') {
+                        $excluded = $_POST['excluded'] ?? null;
+                        if (!Auth::allowedPath(Storyboards::selectedPath($excluded))) { throw new InvalidArgumentException('Chemin non autorisé.'); }
+                        $paths = Storyboards::selectionWithout($paths, $excluded);
+                        header('Content-Type: application/json; charset=utf-8');
+                        echo json_encode(['paths' => $paths], JSON_INVALID_UTF8_SUBSTITUTE); exit;
                     }
                     $memo = [];
                     $paths = array_values(array_filter($paths, function ($path) use (&$memo) {

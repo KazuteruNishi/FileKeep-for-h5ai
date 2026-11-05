@@ -694,18 +694,23 @@ vidéos arrêtées, les sélectionner à nouveau, valider leur préchargement pu
 cliquer sur **Reprendre**. Le site et la lecture restent indépendants de ces actions.
 
 Le menu de sélection s'ouvre comme une liste déroulante avec recherche, groupes
-par dossier et cases à cocher. Il permet de naviguer dans les dossiers et de
-chercher dans leurs sous-dossiers ; les sélections restent cochées pendant la
-navigation. Cocher un dossier inclut récursivement ses vidéos. Cocher un fichier
-ou sous-dossier désélectionne ses parents sélectionnés ; cocher un parent retire
-les sélections de ses descendants. Les dossiers voisins restent sélectionnés.
-Jusqu'à 200 fichiers
+par dossier et coches de sélection à droite. Les **chevrons** développent et réduisent
+l'arborescence directement dans la liste, avec chargement du contenu à la première
+ouverture. Une coche blanche indique chaque élément sélectionné. La recherche
+inclut les sous-dossiers ; les sélections restent cochées quand une branche est
+réduite ou pendant la recherche. Cocher un dossier inclut récursivement ses vidéos.
+Décocher un fichier ou un sous-dossier décoche ses parents tout en conservant le
+reste de leur contenu sélectionné, y compris les branches non affichées. Le serveur
+remplace alors le parent par les branches voisines, sans se limiter aux 300 lignes
+du catalogue. Sélectionner le dernier élément manquant coche automatiquement le
+dossier parent, et ce à tous les niveaux dont le contenu complet a été chargé.
+Jusqu'à 5 000 fichiers
 ou dossiers peuvent être sélectionnés ; une recherche affiche au plus 300 résultats.
 Les choix ne sont appliqués qu'après validation dans le menu.
 Les fichiers dont les aperçus sont terminés sont grisés et non sélectionnables.
 Un dossier est désactivé seulement si toutes ses vidéos, sous-dossiers compris,
 sont terminées ; un dossier partiellement traité reste sélectionnable. Le bouton
-**Ouvrir** reste disponible pour consulter le contenu d'un dossier terminé. Ces
+de développement reste disponible pour consulter le contenu d'un dossier terminé. Ces
 états s'actualisent pendant que le menu est ouvert, sans réinitialiser la recherche
 ni déplacer le défilement. Les sélections devenues complètes sont retirées.
 

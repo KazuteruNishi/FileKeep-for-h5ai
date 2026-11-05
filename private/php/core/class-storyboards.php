@@ -160,6 +160,32 @@ class Storyboards {
         return $memo[$path] = $result;
     }
 
+    /** Split selected ancestors into sibling branches without enumerating every video. */
+    public static function selectionWithout($paths, $excluded) {
+        self::selectedPath($excluded);
+        $result = []; $memo = [];
+        $visit = function ($relative) use (&$visit, &$result, &$memo, $excluded) {
+            if ($relative === $excluded || strpos($relative, $excluded . '/') === 0) { return; }
+            $source = self::selectedPath($relative);
+            if (!Auth::allowedPath($source)) { throw new InvalidArgumentException('Chemin non autorisé.'); }
+            if (strpos($excluded, $relative . '/') === 0 && is_dir($source)) {
+                foreach (new DirectoryIterator($source) as $entry) {
+                    if ($entry->isDot() || $entry->isLink() || $entry->getFilename()[0] === '.') { continue; }
+                    if (!$entry->isDir() && !preg_match('/\.(mp4|m4v|mkv|webm|mov)$/i', $entry->getFilename())) { continue; }
+                    $visit($relative . '/' . $entry->getFilename());
+                }
+            } else {
+                $completion = self::completion($source, $memo);
+                if ($completion['complete'] || (is_dir($source) && !$completion['total'] && !$completion['unknown'])) { return; }
+                $result[$relative] = true;
+                if (count($result) > 5000) { throw new InvalidArgumentException('La sélection dépasse 5 000 branches.'); }
+            }
+        };
+        foreach ($paths as $path) { $visit($path); }
+        $paths = array_keys($result); usort($paths, 'strnatcasecmp');
+        return $paths;
+    }
+
     public static function catalog($relative = '', $search = '') {
         $folder = self::selectedPath($relative);
         if (!is_dir($folder) || !Auth::allowedPath($folder)) { throw new InvalidArgumentException('Dossier indisponible.'); }

@@ -11,10 +11,15 @@
   let priorityPopup = null;
   let priorityHighlight = null, priorityHighlightUntil = 0;
   const selected = new Set();
+  const knownChildren = new Map();
+  let selectionBusy = false;
   const tableViews = new Map();
   const historyDateFormat = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric' });
   const historyTimeFormat = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   let folder = '', searchTimer, catalogRequest, catalogBusy = false, visibleChoices = new Map();
+  const expandedFolders = new Set();
+  let visibleBranches = new Map();
+  let treeRequest = new AbortController();
   const applyCompletion = (entry, checkbox) => {
     checkbox.disabled = !!entry.complete;
     checkbox.previewRow.dataset.complete = entry.complete ? 'true' : 'false';
@@ -155,75 +160,163 @@
     });
   }
   const selectionChanged = () => {
-    visibleChoices.forEach((checkbox, path) => { checkbox.checked = selected.has(path); });
+    // Collapse fully selected children back into their parent, deepest first.
+    const parents = [...knownChildren.keys()].filter(Boolean).sort((a, b) => b.split('/').length - a.split('/').length);
+    for (const parent of parents) {
+      const data = knownChildren.get(parent);
+      const entries = data.entries.filter(entry => !entry.complete && (!entry.folder || entry.total !== 0 || entry.unknown));
+      if (data.truncated || !entries.length || !entries.every(entry => [...selected].some(path => entry.path === path || entry.path.startsWith(path + '/')))) continue;
+      if ([...selected].some(path => parent === path || parent.startsWith(path + '/'))) continue;
+      for (const path of [...selected]) { if (path.startsWith(parent + '/')) selected.delete(path); }
+      selected.add(parent);
+    }
+    visibleChoices.forEach((checkboxes, path) => {
+      const covered = [...selected].some(parent => path === parent || path.startsWith(parent + '/'));
+      checkboxes.forEach(checkbox => {
+        const complete = checkbox.previewRow.dataset.complete === 'true';
+        checkbox.checked = !complete && covered; checkbox.disabled = complete || selectionBusy;
+      });
+    });
     document.getElementById('picker-count').textContent = `${selected.size} sélection${selected.size > 1 ? 's' : ''}`;
     document.getElementById('picker-summary').textContent = selected.size ? `${selected.size} fichier${selected.size > 1 ? 's' : ''} ou dossier${selected.size > 1 ? 's' : ''} sélectionné${selected.size > 1 ? 's' : ''}` : 'Choisir des fichiers ou des dossiers…';
-    for (const id of ['picker-queue', 'picker-apply']) document.getElementById(id).disabled = !selected.size;
+    document.getElementById('picker-queue').disabled = !selected.size || selectionBusy;
+    document.getElementById('picker-clear').disabled = selectionBusy;
   };
+  async function fetchCatalog(path, search, signal) {
+    const url = new URL(host.dataset.endpoint, location.href);
+    url.searchParams.set('catalog', '1'); url.searchParams.set('path', path); url.searchParams.set('search', search);
+    const response = await fetch(url, { credentials: 'same-origin', signal, headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error('Catalogue indisponible');
+    const data = await response.json();
+    if (!search) knownChildren.set(path, data);
+    return data;
+  }
+  function renderChoices(entries, destination, signal, grouped = false) {
+    const groups = new Map();
+    for (const entry of entries) {
+      const group = grouped ? (entry.folder ? 'Dossiers' : entry.parent) : '';
+      if (!groups.has(group)) groups.set(group, []);
+      groups.get(group).push(entry);
+    }
+    for (const [title, items] of groups) {
+      if (title) { const heading = node('h3', title); heading.className = 'picker-group'; destination.append(heading); }
+      for (const entry of items) {
+        const wrapper = node('div'), row = node('div'), label = node('label'), checkbox = node('input'), text = node('span');
+        wrapper.className = 'picker-tree-node'; row.className = 'picker-entry';
+        checkbox.type = 'checkbox'; checkbox.checked = selected.has(entry.path);
+        if (!visibleChoices.has(entry.path)) visibleChoices.set(entry.path, new Set());
+        visibleChoices.get(entry.path).add(checkbox);
+        checkbox.addEventListener('change', async () => {
+          if (checkbox.disabled || selectionBusy) return;
+          if (checkbox.checked) {
+            const overlapping = [...selected].filter(path => path !== entry.path
+              && (entry.path.startsWith(path + '/') || path.startsWith(entry.path + '/')));
+            if (!selected.has(entry.path) && selected.size - overlapping.length >= 5000) {
+              checkbox.checked = false; message.textContent = 'La sélection est limitée à 5 000 éléments.'; return;
+            }
+            overlapping.forEach(path => selected.delete(path)); selected.add(entry.path);
+          } else {
+            const inherited = [...selected].some(path => entry.path.startsWith(path + '/'));
+            if (inherited) {
+              selectionBusy = true; selectionChanged();
+              try {
+                const body = new URLSearchParams({ action: 'selection-exclude', excluded: entry.path,
+                  paths_json: JSON.stringify([...selected]), _csrf: document.querySelector('meta[name="h5ai-csrf"]').content });
+                const response = await fetch(host.dataset.endpoint, { method: 'POST', credentials: 'same-origin', body,
+                  headers: { Accept: 'application/json' } });
+                if (!response.ok) throw new Error();
+                const data = await response.json();
+                if (!Array.isArray(data.paths)) throw new Error();
+                selected.clear(); data.paths.forEach(path => selected.add(path));
+              } catch (_) { message.textContent = 'Impossible de modifier la sélection. Réessayez.'; }
+              finally { selectionBusy = false; }
+            } else {
+              for (const path of [...selected]) {
+                if (path === entry.path || path.startsWith(entry.path + '/')) selected.delete(path);
+              }
+            }
+          }
+          selectionChanged();
+        });
+        const subtitle = node('small');
+        checkbox.previewRow = row; checkbox.previewSubtitle = subtitle; applyCompletion(entry, checkbox);
+        text.append(node('strong', entry.name), subtitle); label.append(text, checkbox); row.append(label);
+        wrapper.append(row); destination.append(wrapper);
+        if (!entry.folder) continue;
+        const toggle = node('button'), children = node('div');
+        const chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        chevron.setAttribute('viewBox', '0 0 24 24'); chevron.setAttribute('aria-hidden', 'true');
+        const chevronPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        chevronPath.setAttribute('d', 'm9 5 7 7-7 7'); chevron.append(chevronPath); toggle.append(chevron);
+        toggle.type = 'button'; toggle.className = 'picker-tree-toggle';
+        children.className = 'picker-tree-children'; children.hidden = true;
+        children.id = 'picker-branch-' + (++branchId);
+        children.setAttribute('role', 'group'); children.setAttribute('aria-label', entry.name);
+        toggle.setAttribute('aria-controls', children.id);
+        const branch = { children, toggle, loaded: false, loading: false };
+        if (!visibleBranches.has(entry.path)) visibleBranches.set(entry.path, new Set());
+        visibleBranches.get(entry.path).add(branch); row.prepend(toggle); wrapper.append(children);
+        const syncToggle = () => {
+          const expanded = expandedFolders.has(entry.path);
+          children.hidden = !expanded;
+          toggle.setAttribute('aria-expanded', String(expanded));
+          toggle.setAttribute('aria-label', `${expanded ? 'Réduire' : 'Développer'} ${entry.path}`);
+        };
+        const expand = async () => {
+          syncToggle();
+          if (!expandedFolders.has(entry.path) || branch.loaded || branch.loading) return;
+          branch.loading = true; toggle.setAttribute('aria-busy', 'true');
+          children.replaceChildren(node('p', 'Chargement…'));
+          try {
+            const data = await fetchCatalog(entry.path, '', signal);
+            if (signal.aborted || !visibleBranches.get(entry.path)?.has(branch)) return;
+            children.replaceChildren(); branch.loaded = true;
+            renderChoices(data.entries, children, signal);
+            if (!data.entries.length) children.append(node('p', 'Aucune vidéo ni sous-dossier.'));
+            if (data.truncated) children.append(node('p', '300 résultats affichés. Utilisez la recherche pour affiner.'));
+            selectionChanged();
+          } catch (error) {
+            if (error.name !== 'AbortError' && visibleBranches.get(entry.path)?.has(branch)) {
+              expandedFolders.delete(entry.path); syncToggle();
+              message.textContent = 'Ce dossier est indisponible. Réessayez de le développer.';
+            }
+          } finally { branch.loading = false; toggle.removeAttribute('aria-busy'); }
+        };
+        toggle.addEventListener('click', () => {
+          if (expandedFolders.has(entry.path)) { expandedFolders.delete(entry.path); syncToggle(); }
+          else { expandedFolders.add(entry.path); expand(); }
+        });
+        syncToggle();
+        if (expandedFolders.has(entry.path)) expand();
+      }
+    }
+  }
+  let branchId = 0;
   async function catalog(updateOnly = false) {
     if (updateOnly && catalogBusy) return;
+    if (!updateOnly) { treeRequest.abort(); treeRequest = new AbortController(); }
     catalogBusy = true;
     catalogRequest?.abort(); catalogRequest = new AbortController();
     const signal = catalogRequest.signal;
     if (!updateOnly) message.textContent = 'Recherche…';
-    document.getElementById('picker-path').textContent = folder || 'Racine';
-    document.getElementById('picker-parent').disabled = !folder;
-    const url = new URL(host.dataset.endpoint, location.href);
-    url.searchParams.set('catalog', '1'); url.searchParams.set('path', folder);
-    url.searchParams.set('search', document.getElementById('preview-search').value.trim());
     try {
-      const response = await fetch(url, { credentials: 'same-origin', signal, headers: { Accept: 'application/json' } });
-      if (!response.ok) throw new Error();
-      const data = await response.json(), results = document.createDocumentFragment(), choices = new Map();
+      const data = await fetchCatalog(folder, document.getElementById('preview-search').value.trim(), signal);
       if (updateOnly) {
-        for (const entry of data.entries) {
-          const checkbox = visibleChoices.get(entry.path);
-          if (checkbox) applyCompletion(entry, checkbox);
+        const entries = [...data.entries];
+        for (const [path, branches] of visibleBranches) {
+          if (!expandedFolders.has(path) || ![...branches].some(branch => !branch.children.closest('[hidden]') && branch.loaded)) continue;
+          try { entries.push(...(await fetchCatalog(path, '', signal)).entries); }
+          catch (error) { if (error.name === 'AbortError') throw error; }
+        }
+        for (const entry of entries) {
+          visibleChoices.get(entry.path)?.forEach(checkbox => applyCompletion(entry, checkbox));
         }
         selectionChanged(); return;
       }
-      const groups = new Map();
-      for (const entry of data.entries) {
-        const group = entry.folder ? 'Dossiers' : entry.parent;
-        if (!groups.has(group)) groups.set(group, []);
-        groups.get(group).push(entry);
-      }
-      for (const [title, entries] of groups) {
-        const heading = node('h3', title); heading.className = 'picker-group'; results.append(heading);
-        for (const entry of entries) {
-        const row = node('div'), label = node('label'), checkbox = node('input'), text = node('span');
-        row.className = 'picker-entry'; checkbox.type = 'checkbox'; checkbox.checked = selected.has(entry.path);
-        choices.set(entry.path, checkbox);
-        checkbox.addEventListener('change', () => {
-          if (checkbox.disabled) return;
-          if (checkbox.checked) {
-            const overlapping = [...selected].filter(path => path !== entry.path
-              && (entry.path.startsWith(path + '/') || path.startsWith(entry.path + '/')));
-            if (!selected.has(entry.path) && selected.size - overlapping.length >= 200) {
-              checkbox.checked = false; message.textContent = 'La sélection est limitée à 200 éléments.'; return;
-            }
-            overlapping.forEach(path => selected.delete(path));
-            selected.add(entry.path);
-          } else selected.delete(entry.path);
-          selectionChanged();
-        });
-        const subtitle = node('small');
-        checkbox.previewRow = row; checkbox.previewSubtitle = subtitle;
-        applyCompletion(entry, checkbox);
-        text.append(node('strong', entry.name), subtitle);
-        label.append(checkbox, text); row.append(label);
-        if (entry.folder) {
-          const open = node('button', 'Ouvrir'); open.type = 'button';
-          open.setAttribute('aria-label', `Ouvrir ${entry.path}`);
-          open.addEventListener('click', () => { folder = entry.path; document.getElementById('preview-search').value = ''; catalog(); });
-          row.append(open);
-        }
-        results.append(row);
-        }
-      }
-      document.getElementById('picker-results').replaceChildren(results);
-      visibleChoices = choices; selectionChanged();
-      message.textContent = data.truncated ? '300 résultats affichés. Affinez la recherche ou ouvrez un dossier.' : data.entries.length ? '' : 'Aucun fichier vidéo ni dossier trouvé.';
+      visibleChoices = new Map(); visibleBranches = new Map();
+      const results = document.getElementById('picker-results'); results.replaceChildren();
+      renderChoices(data.entries, results, treeRequest.signal, true); selectionChanged();
+      message.textContent = data.truncated ? '300 résultats affichés. Affinez la recherche ou développez un dossier.' : data.entries.length ? '' : 'Aucun fichier vidéo ni dossier trouvé.';
     } catch (error) { if (!updateOnly && error.name !== 'AbortError') message.textContent = 'La recherche est indisponible. Réessayez.'; }
     finally { if (catalogRequest.signal === signal) catalogBusy = false; }
   }
@@ -231,14 +324,13 @@
   picker.addEventListener('keydown', event => { if (event.key === 'Escape') { picker.open = false; picker.querySelector('summary').focus(); } });
   document.addEventListener('click', event => { if (!picker.contains(event.target)) picker.open = false; });
   document.getElementById('preview-search').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(catalog, 250); });
-  document.getElementById('picker-parent').addEventListener('click', () => { folder = folder.split('/').slice(0, -1).join('/'); document.getElementById('preview-search').value = ''; catalog(); });
   document.getElementById('picker-clear').addEventListener('click', () => { selected.clear(); selectionChanged(); catalog(); });
   async function applySelection(action) {
     if (!selected.size) return;
     const body = new URLSearchParams({ action, priority: document.getElementById('picker-priority').value,
       _csrf: document.querySelector('meta[name="h5ai-csrf"]').content });
-    selected.forEach(path => body.append('paths[]', path));
-    for (const id of ['picker-queue', 'picker-apply']) document.getElementById(id).disabled = true;
+    body.set('paths_json', JSON.stringify([...selected]));
+    document.getElementById('picker-queue').disabled = true;
     try {
       const response = await fetch(host.dataset.endpoint, { method: 'POST', credentials: 'same-origin', body, headers: { Accept: 'application/json' } });
       if (!response.ok || !(await response.json()).ok) throw new Error();
@@ -248,7 +340,6 @@
     finally { selectionChanged(); }
   }
   document.getElementById('picker-queue').addEventListener('click', () => applySelection('select'));
-  document.getElementById('picker-apply').addEventListener('click', () => applySelection('priority'));
   selectionChanged();
   const searchText = text => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr');
   function renderTables(data) {
@@ -463,7 +554,7 @@
       if (!closed) timer = setTimeout(refresh, mutation !== queueMutation ? 0 : 3000);
     }
   }
-  window.addEventListener('pagehide', () => { closed = true; priorityPopup?.close(false); clearTimeout(timer); clearTimeout(searchTimer); catalogRequest?.abort(); });
+  window.addEventListener('pagehide', () => { closed = true; priorityPopup?.close(false); clearTimeout(timer); clearTimeout(searchTimer); catalogRequest?.abort(); treeRequest.abort(); });
   window.addEventListener('pageshow', () => { if (closed) { closed = false; refresh(); } });
   refresh();
 })();
