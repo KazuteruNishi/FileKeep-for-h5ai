@@ -146,3 +146,9 @@
 .fk-player :focus-visible{outline:2px solid #eee;outline-offset:2px}.fk-player:fullscreen{width:100%!important;height:100%!important;max-width:none;max-height:none;border:0;border-radius:0;clip-path:none;left:0!important;top:0!important}
 
 .fk-player .shaka-scrim-container{display:none}
+/* YouTube's supplied delhi-fast-follow-autonav-toggle assets and dimensions. */
+.fk-player .fk-autoplay-track{display:block;position:relative;flex:none;width:30px;height:18px;margin:0 9px;border-radius:9px;background:rgba(255,255,255,.1)}
+.fk-player .fk-autoplay-track:after{content:"";position:absolute;top:0;left:0;width:14px;height:14px;margin:2px;border-radius:7px;background:#fff url('../images/player/autoplay-off.svg') center/9px 9px no-repeat;transition:all .2s cubic-bezier(.05,0,0,1)}
+.fk-player .fk-autoplay-next[aria-checked=true] .fk-autoplay-track{background:#fff}
+.fk-player .fk-autoplay-next[aria-checked=true] .fk-autoplay-track:after{background-color:#0f0f0f;background-image:url('../images/player/autoplay-on.svg');transform:translateX(12px)}
+@media(prefers-reduced-motion:reduce){.fk-player .fk-autoplay-track:after{transition:none}}

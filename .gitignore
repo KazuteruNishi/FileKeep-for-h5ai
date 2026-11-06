@@ -9,6 +9,10 @@
 *.htpasswd
 *.htpasswd.*
 
+# Personal server stack and local backups (may contain credentials)
+/docker-compose.yml
+/docker-compose.yml.*.bak
+
 # Runtime caches may contain previews of private documents
 /private/cache/*
 !/private/cache/README.md

@@ -6,6 +6,9 @@
   const storyboardEndpoint = sourceScript.dataset.storyboards || new URL('../../../lecture/planches', assetRoot).href;
   const instances = new WeakMap();
   const audioStorageKey = 'filekeep:player-audio';
+  const autoplayStorageKey = 'filekeep:autoplay-next';
+  let autoplayNext = false, autoplayTarget = null;
+  try { autoplayNext = localStorage.getItem(autoplayStorageKey) === 'true'; } catch (_) {}
   let audioPreferences = null;
   try {
     const saved = JSON.parse(localStorage.getItem(audioStorageKey));
@@ -13,6 +16,32 @@
       audioPreferences = { volume: saved.volume, muted: saved.muted };
     }
   } catch (_) { /* Keep in-memory preferences when browser storage is unavailable. */ }
+  function useNativeVodDuration(player, video, signal) {
+    const original = player.seekRange;
+    const nativeMode = shaka.Player.LoadMode.SRC_EQUALS;
+    const range = function () {
+      const bounds = original.call(player), duration = video.duration;
+      if (player.getLoadMode() !== nativeMode || player.isLive() || !Number.isFinite(duration) || duration <= 0) return bounds;
+      const configuredEnd = player.getConfiguration().playRangeEnd;
+      return { start: bounds.start, end: Math.max(bounds.start, Math.min(duration, configuredEnd ?? Infinity)) };
+    };
+    // Shaka's compiled UI calls the internal alias of seekRange. Replace every
+    // alias of that exact function on this instance, without editing the library.
+    const aliases = new Map();
+    for (let object = player; object && object !== Object.prototype; object = Object.getPrototypeOf(object)) {
+      for (const key of Object.getOwnPropertyNames(object)) {
+        if (aliases.has(key) || Object.getOwnPropertyDescriptor(object, key)?.value !== original) continue;
+        aliases.set(key, Object.getOwnPropertyDescriptor(player, key));
+      }
+    }
+    for (const key of aliases.keys()) Object.defineProperty(player, key, { configurable: true, writable: true, value: range });
+    signal.addEventListener('abort', () => {
+      for (const [key, descriptor] of aliases) {
+        if (descriptor) Object.defineProperty(player, key, descriptor);
+        else delete player[key];
+      }
+    }, { once: true });
+  }
   let rendererLibrary;
   let shakaLibrary;
   let registered = false;
@@ -200,6 +229,9 @@
   }
   window.FileKeepPlayer = {
     create(video, href, navigation = null) {
+      if (autoplayTarget === new URL(href, location.href).href) {
+        video.autoplay = true; autoplayTarget = null;
+      }
       const root = document.createElement('section');
       root.className = 'fk-player'; root.tabIndex = 0;
       root.dataset.player = 'shaka'; root.setAttribute('aria-label', 'Lecteur vidéo Shaka');
@@ -451,6 +483,37 @@
         const cancel = () => { for (const animation of animations) animation.cancel(); animations.clear(); };
         abort.signal.addEventListener('abort', () => { observers.forEach(observer => observer.disconnect()); cancel(); }, { once: true });
       }
+      function configureAutoplay(actions) {
+        if (!navigation || navigation.count < 2) return;
+        const button = document.createElement('button'); button.type = 'button';
+        button.className = 'fk-autoplay-next shaka-no-propagation'; button.setAttribute('role', 'switch');
+        const track = document.createElement('span'); track.className = 'fk-autoplay-track';
+        track.setAttribute('aria-hidden', 'true'); button.append(track); actions.prepend(button);
+        const update = () => {
+          const label = `Lecture automatique : ${autoplayNext ? 'activée' : 'désactivée'}`;
+          button.setAttribute('aria-checked', String(autoplayNext)); button.setAttribute('aria-label', label);
+          button.dataset.tooltipLabel = label;
+          const tooltipLabel = button.querySelector('.fk-shortcut-tooltip')?.firstElementChild;
+          if (tooltipLabel) tooltipLabel.textContent = label;
+        };
+        update();
+        on(button, 'click', () => {
+          autoplayNext = !autoplayNext;
+          try { localStorage.setItem(autoplayStorageKey, String(autoplayNext)); } catch (_) {}
+          update();
+        });
+        let advanced = false;
+        on(video, 'play', () => { advanced = false; });
+        on(video, 'ended', () => {
+          if (disposed || advanced || !autoplayNext || !navigation.next) return;
+          advanced = true;
+          autoplayTarget = new URL(navigation.next.href, location.href).href;
+          navigation.moveNext();
+          // The next h5ai preview is created in a microtask. Do not retain a
+          // pending autoplay request if navigation was cancelled or failed.
+          setTimeout(() => { autoplayTarget = null; }, 0);
+        });
+      }
       function configureNavigation(panel) {
         if (!navigation || navigation.count < 2) return;
         const group = document.createElement('div'); group.className = 'fk-playlist-actions';
@@ -498,6 +561,7 @@
           ['.shaka-play-button', 'K'], ['.shaka-mute-button', 'M'],
           ['.fk-video-previous', navigation?.previous ? 'Shift+P' : ''],
           ['.fk-video-next', navigation?.next ? 'Shift+N' : ''],
+          ['.fk-autoplay-next', ''],
           ['.fk-player-actions .shaka-caption-button', 'C'],
           ['.fk-player-actions .shaka-fullscreen-button', 'F'],
           ['.fk-player-actions .shaka-pip-button', 'P'],
@@ -1050,7 +1114,7 @@
           if (disposed) return;
           shaka.polyfill.installAll(); registerSubtitleDelay();
           feedbackIcon = new shaka.ui.Icon(feedback);
-          player = new shaka.Player(); await player.attach(video, false);
+          player = new shaka.Player(); useNativeVodDuration(player, video, abort.signal); await player.attach(video, false);
           if (disposed) { await player.destroy(); return; }
           ui = new shaka.ui.Overlay(player, root, video);
           ui.getControls().getLocalization().changeLocale(['fr']);
@@ -1086,7 +1150,7 @@
               else player.selectTextTrack(tracks[0]);
             }, true);
           }
-          configureNavigation(panel); configureShortcutTooltips();
+          configureNavigation(panel); configureAutoplay(actions); configureShortcutTooltips();
           root.dataset.shakaVersion = shaka.Player.version;
           player.addEventListener('textchanged', syncSubtitles);
           player.addEventListener('error', () => {

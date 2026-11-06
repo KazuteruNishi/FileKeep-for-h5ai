@@ -21,6 +21,7 @@ class Bootstrap {
         Previewadmin::apply();
         Journal::apply();
         Filejournal::apply();
+        Suggestions::apply();
         Videoviews::apply();
         Playbackprogress::apply();
         Media::apply();

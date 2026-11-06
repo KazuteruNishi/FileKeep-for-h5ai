@@ -1049,6 +1049,45 @@ les lectures déjà enregistrées peuvent continuer à actualiser leur temps.
 Un échec du journal n'empêche pas d'ouvrir ou de lire le fichier. Aucun montage,
 rebuild ou changement du conteneur Apache ou du générateur d'aperçus n'est requis.
 
+## Recherche avec suggestions
+
+Une barre de recherche est intégrée à la barre supérieure de la liste des fichiers,
+sans changer sa hauteur. À partir de deux caractères, elle propose jusqu'à douze
+dossiers ou fichiers accessibles au compte connecté. La recherche porte sur les
+noms et les chemins, ignore les accents latins et accepte plusieurs mots. Un clic
+sur une vidéo ouvre son dossier et le lecteur existant ; un clic sur un dossier
+ouvre son contenu. Les flèches du clavier parcourent les suggestions, Entrée ouvre
+la sélection, Échap ferme la liste et la croix efface le texte.
+
+Sur petit écran, une loupe déploie le champ dans la hauteur existante de la barre.
+Le catalogue est construit progressivement pendant les recherches, hors du partage
+public dans `H5AI_USERS_DIR/search`, séparément pour chaque compte et révision de
+ses droits. Les résultats sont revérifiés avec les droits actuels avant envoi.
+Le cache est renouvelé après cinq minutes ; les anciens index sont retirés après
+une journée. Une première recherche peut afficher des résultats progressivement.
+Le catalogue est limité à 100 000 entrées par compte ; un message indique si cette
+limite est atteinte. Aucun service ni conteneur supplémentaire n'est requis.
+
+## Durée complète des vidéos natives
+
+Pour une vidéo finie lue nativement, le lecteur utilise la durée totale connue
+par le navigateur pour le total et la barre de progression. Certains MKV annoncent
+une plage navigable beaucoup plus courte qui s'allonge pendant la lecture ; elle
+ne doit pas remplacer la durée du fichier. La correction s'applique à l'interface
+Shaka et à la barre personnalisée, sans modifier le fichier, le flux vidéo ou le
+décodage audio. Les flux en direct, les durées inconnues et la lecture MediaSource
+conservent leur comportement initial.
+
+## Lecture automatique
+
+Le bouton **Lecture automatique**, placé avant les sous-titres, active ou désactive
+le passage à la vidéo suivante à la fin de la lecture. Il apparaît lorsqu'il y a
+au moins deux vidéos dans la navigation du lecteur. Il est désactivé par défaut ;
+le choix est conservé dans ce navigateur, même après rechargement. La dernière
+vidéo arrête l'enchaînement, sans retour automatique à la première. Les icônes et
+dimensions proviennent du CSS YouTube fourni, avec provenance dans
+`public/images/player/SOURCES.md`.
+
 ## Progression de lecture par utilisateur
 
 La position de chaque vidéo est enregistrée côté serveur pour le compte connecté,

@@ -7,7 +7,8 @@ class Routes {
         $paths = ['home' => '', 'account' => 'mon-compte', 'admin' => 'administration',
             'photo' => 'mon-compte/photo', 'logout' => 'deconnexion', 'logs' => 'journaux', 'previews' => 'administration/apercus',
             'subtitles' => 'lecture/sous-titres', 'storyboards' => 'lecture/planches', 'views' => 'lecture/vues',
-            'progress' => 'lecture/progression', 'filelogs' => 'journaux/fichiers', 'fileevents' => 'lecture/evenements'];
+            'progress' => 'lecture/progression', 'filelogs' => 'journaux/fichiers', 'fileevents' => 'lecture/evenements',
+            'suggestions' => 'recherche/suggestions'];
         return $root . $paths[$name];
     }
 
